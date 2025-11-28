@@ -1,0 +1,39 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ../code:/app/code
+      - ./backend:/app
+      - ../data:/app/data
+    environment:
+      - PYTHONPATH=/app
+    env_file:
+      - ./backend/.env
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+      - NUXT_HOST=0.0.0.0
+      - NUXT_PORT=3000
+      - NITRO_PORT=3000
+    env_file:
+      - ./frontend/.env
+    expose:
+      - "3000"
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "86:86"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro

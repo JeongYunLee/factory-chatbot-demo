@@ -477,6 +477,8 @@ class Settings(BaseSettings):
         "https://labs.datahub.kr",
         "http://localhost:8000",
         "https://localhost:8000",
+        "http://localhost:86",
+        "https://localhost:86",
     ]
 
 @lru_cache()
