@@ -5,7 +5,7 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   
   app: {
-    baseURL: '/projects/factory-chatbot/',
+    baseURL: '/projects/data-chatbot/',
   },
   runtimeConfig: {
     public: {
