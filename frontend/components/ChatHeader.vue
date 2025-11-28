@@ -2,6 +2,7 @@
   <header class="chat-header">
     <div>
       <p class="eyebrow">Data Insight Chatbot</p>
+      <br></br>
       <h1>데이터 기반 챗봇 어시스턴트</h1>
       <p class="subtitle">
         <!-- 서울 지역 공장 등록 현황 데이터를 기반으로 자연어 질문에 답변합니다. -->

@@ -19,8 +19,16 @@
         </svg>
       </div>
       <div class="bubble">
+        <button
+          v-if="message.role === 'bot' && message.hasData && message.executionId"
+          class="data-button"
+          @click="emit('show-data', message.executionId)"
+        >
+          데이터 기반 답변
+        </button>
         <div
           class="bubble-text"
+          :class="{ 'has-data-button': message.role === 'bot' && message.hasData }"
           v-html="renderMarkdown(message.text)"
         />
       </div>
@@ -49,11 +57,17 @@ export interface ChatMessage {
   role: 'user' | 'bot'
   text: string
   timestamp: number
+  hasData?: boolean
+  executionId?: string | null
 }
 
 defineProps<{
   messages: ChatMessage[]
   isLoading: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'show-data', executionId: string | null | undefined): void
 }>()
 
 const md = new MarkdownIt({
@@ -88,6 +102,34 @@ const renderMarkdown = (text: string) => md.render(text ?? '')
   padding: 0.9rem 1.1rem;
   background: #f1f5f9;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  position: relative;
+}
+
+.data-button {
+  position: absolute;
+  top: -0.5rem;
+  left: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+  z-index: 1;
+}
+
+.data-button:hover {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.data-button:active {
+  transform: translateY(0);
 }
 
 .bubble-row.user .bubble {
@@ -98,6 +140,10 @@ const renderMarkdown = (text: string) => md.render(text ?? '')
 .bubble-text :deep(p) {
   margin: 0 0 0.6rem;
   line-height: 1.6;
+}
+
+.bubble-text.has-data-button {
+  padding-top: 0.5rem;
 }
 
 .bubble-text :deep(p:last-child) {
