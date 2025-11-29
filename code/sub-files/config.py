@@ -1,5 +1,4 @@
 import os
-
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 import pandas as pd
@@ -19,7 +18,6 @@ model = ChatOpenAI(
     model="gpt-5.1-2025-11-13",
     temperature=0,
 )
-
 
 # 데이터프레임 로드
 df = pd.read_csv("data/cleaned_전국공장등록현황_preprocessed_seoul.csv", low_memory=False)

@@ -277,11 +277,16 @@ def infer_visualization_type(question: str, output) -> dict | None:
         # LLM을 사용하여 시각화 타입 추론
         chain = visualization_prompt | model | visualization_output_parser
         
-        result = chain.invoke({
-            "question": question,
-            "columns": str(columns),
-            "sample_data": str(sample_data)
-        })
+        # 콜백 비활성화하여 RootListenersTracer 에러 방지
+        config = RunnableConfig(callbacks=[])
+        result = chain.invoke(
+            {
+                "question": question,
+                "columns": str(columns),
+                "sample_data": str(sample_data)
+            },
+            config=config
+        )
         
         # 결과를 딕셔너리로 변환
         visualization_meta = {
@@ -417,9 +422,16 @@ def router(state: GraphState) -> GraphState:
         history_messages_key="chat_history",
     )
     
+    # 콜백 비활성화하여 RootListenersTracer 에러 방지
+    # router_with_history.invoke()가 딕셔너리를 반환하는데, 
+    # LangChain 콜백 시스템이 이를 추적하려고 할 때 에러 발생
+    config = RunnableConfig(
+        configurable={'session_id': state["session_id"]},
+        callbacks=[]  # 콜백 비활성화
+    )
     router_result = router_with_history.invoke(
         {"query": question}, 
-        {'configurable': {'session_id': state["session_id"]}}
+        config
     )
     state["q_type"] = router_result['type']
     return state
@@ -524,9 +536,14 @@ def code_generator(input, session_id: str | None = None):
         history_messages_key="chat_history",
     )
 
+    # 콜백 비활성화하여 RootListenersTracer 에러 방지
+    config = RunnableConfig(
+        configurable={'session_id': resolved_session_id},
+        callbacks=[]  # 콜백 비활성화
+    )
     code_generator_result = code_generator_with_history.invoke(
         {"query": input},  # 원본 input 그대로 전달
-        {'configurable': {'session_id': resolved_session_id}}
+        config
     )
     return code_generator_result['code']
 
@@ -651,11 +668,10 @@ def agent(state: GraphState) -> GraphState:
     question = state["question"]
     
     # 디버깅: Agent에서 받은 질문 확인
-    print(f"🤖 Agent 입력 질문 길이: {len(question)}, 끝 5자: {repr(question[-5:]) if len(question) >= 5 else repr(question)}")
+    # print(f"🤖 Agent 입력 질문 길이: {len(question)}, 끝 5자: {repr(question[-5:]) if len(question) >= 5 else repr(question)}")
     
-    # 히스토리에 dict 그대로 넣지 말고 문자열로 변환
-    chat_history = get_session_history(session_id)
-    chat_history.add_user_message(f"question: {question}, q_type: {state['q_type']}")
+    # chat_history = get_session_history(session_id)
+    # chat_history.add_user_message(f"question: {question}, q_type: {state['q_type']}")
 
     try:
         # Agent 생성
@@ -689,9 +705,14 @@ def agent(state: GraphState) -> GraphState:
                 }
                 print(f"🚀 Agent invoke 입력 데이터의 input 길이: {len(input_data['input'])}, 끝 5자: {repr(input_data['input'][-5:]) if len(input_data['input']) >= 5 else repr(input_data['input'])}")
                 
+                # 콜백 비활성화하여 RootListenersTracer 에러 방지
+                config = RunnableConfig(
+                    configurable={'session_id': session_id},
+                    callbacks=[]  # 콜백 비활성화
+                )
                 result = agent_with_history.invoke(
                     input_data,
-                    {'configurable': {'session_id': session_id}}
+                    config
                 )
 
                 # 결과에서 코드 실행이 필요하면 tools 내부에서 자동 호출됨

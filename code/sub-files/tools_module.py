@@ -4,6 +4,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.runnables import RunnableConfig
 
 from config import df
 from config import model
@@ -101,9 +102,14 @@ def code_generator(input, session_id: str | None = None):
         history_messages_key="chat_history",
     )
 
+    # 콜백 비활성화하여 RootListenersTracer 에러 방지
+    config = RunnableConfig(
+        configurable={"session_id": resolved_session_id},
+        callbacks=[]  # 콜백 비활성화
+    )
     code_generator_result = code_generator_with_history.invoke(
         {"query": input},
-        {"configurable": {"session_id": resolved_session_id}},
+        config,
     )
     return code_generator_result["code"]
 
