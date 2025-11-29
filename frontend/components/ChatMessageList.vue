@@ -19,6 +19,16 @@
         </svg>
       </div>
       <div class="bubble">
+        <button
+          v-if="message.role === 'bot' && message.hasData && message.executionId"
+          class="data-button"
+          @click="emit('show-data', message.executionId)"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span>데이터 기반 분석</span>
+        </button>
         <div
           class="bubble-text"
           v-html="renderMarkdown(message.text)"
@@ -49,11 +59,17 @@ export interface ChatMessage {
   role: 'user' | 'bot'
   text: string
   timestamp: number
+  hasData?: boolean
+  executionId?: string | null
 }
 
 defineProps<{
   messages: ChatMessage[]
   isLoading: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'show-data', executionId: string | null | undefined): void
 }>()
 
 const md = new MarkdownIt({
@@ -88,6 +104,41 @@ const renderMarkdown = (text: string) => md.render(text ?? '')
   padding: 0.9rem 1.1rem;
   background: #f1f5f9;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  position: relative;
+}
+
+.data-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.data-button:hover {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #16a34a;
+}
+
+.data-button:active {
+  background: rgba(34, 197, 94, 0.2);
+}
+
+.data-button svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  flex-shrink: 0;
 }
 
 .bubble-row.user .bubble {
@@ -99,6 +150,7 @@ const renderMarkdown = (text: string) => md.render(text ?? '')
   margin: 0 0 0.6rem;
   line-height: 1.6;
 }
+
 
 .bubble-text :deep(p:last-child) {
   margin-bottom: 0;
@@ -195,4 +247,3 @@ const renderMarkdown = (text: string) => md.render(text ?? '')
   }
 }
 </style>
-

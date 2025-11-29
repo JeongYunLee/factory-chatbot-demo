@@ -1,4 +1,5 @@
 import uuid, os, io, sys, time, json
+from datetime import datetime, date
 import asyncio
 import threading
 from contextlib import asynccontextmanager
@@ -65,6 +66,7 @@ class GraphState(TypedDict):
     session_id: str  # 세션 ID
     context: str | None  # 검색 컨텍스트
     relevance: str | None  # 검색 적합도
+    execution_id: str | None  # 실행 결과 식별자
 
 # 🔧 개선 1: 스레드 안전한 저장소
 import threading
@@ -113,6 +115,100 @@ def get_session_history(session_ids):
 # 새로운 세션 ID 생성 함수
 def generate_session_id():
     return str(uuid.uuid4())
+
+
+class ExecutionResultStore:
+    def __init__(self):
+        self._store = {}
+        self._lock = threading.RLock()
+
+    def save(self, session_id: str, code: str | None, output):
+        execution_id = str(uuid.uuid4())
+        payload = {
+            "execution_id": execution_id,
+            "session_id": session_id,
+            "code": code,
+            "result": serialize_execution_output(output),
+            "created_at": time.time()
+        }
+        with self._lock:
+            self._store[execution_id] = payload
+        return execution_id
+
+    def get(self, execution_id: str):
+        with self._lock:
+            return self._store.get(execution_id)
+
+
+def ensure_json_serializable(value):
+    if isinstance(value, (np.integer, np.int32, np.int64)):
+        return int(value)
+    if isinstance(value, (np.floating, np.float32, np.float64)):
+        return float(value)
+    if isinstance(value, (np.bool_,)):
+        return bool(value)
+    if isinstance(value, (list, tuple)):
+        return [ensure_json_serializable(v) for v in value]
+    if isinstance(value, dict):
+        return {k: ensure_json_serializable(v) for k, v in value.items()}
+    if isinstance(value, (pd.Timestamp,)):
+        return value.isoformat()
+    if isinstance(value, np.datetime64):
+        return pd.Timestamp(value).isoformat()
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if pd.isna(value):
+        return None
+    return value
+
+
+def dataframe_to_rows(df: pd.DataFrame, limit: int = 50):
+    preview_df = df.head(limit).copy()
+    preview_df = preview_df.where(pd.notnull(preview_df), None)
+    records = preview_df.to_dict(orient="records")
+    return [ensure_json_serializable(record) for record in records]
+
+
+def serialize_execution_output(output):
+    if isinstance(output, pd.DataFrame):
+        return {
+            "type": "table",
+            "columns": list(output.columns),
+            "rows": dataframe_to_rows(output),
+            "row_count": int(len(output))
+        }
+    if isinstance(output, pd.Series):
+        series_df = output.reset_index()
+        series_df.columns = ["index", "value"]
+        return {
+            "type": "table",
+            "columns": list(series_df.columns),
+            "rows": dataframe_to_rows(series_df),
+            "row_count": int(len(output))
+        }
+    if isinstance(output, (list, tuple)):
+        return {
+            "type": "list",
+            "rows": [ensure_json_serializable(item) for item in output],
+            "row_count": len(output)
+        }
+    if isinstance(output, dict):
+        return {
+            "type": "object",
+            "data": ensure_json_serializable(output)
+        }
+    if output is None:
+        return {
+            "type": "text",
+            "value": None
+        }
+    return {
+        "type": "text",
+        "value": str(output)
+    }
+
+
+execution_store = ExecutionResultStore()
 
 #######################################################################
 ############################ nodes: Router ############################
@@ -186,7 +282,7 @@ code_generator_prompt = PromptTemplate(
 
             # Company & Factory Information
             2. '회사명' (Company Name): Name of the company operating the factory. It's not unique. 
-            3. '공장구분' (Factory Classification): Type/classification of the factory
+            3. '공장구분' (Factory Classification): Type/classification of the factory. categorized by 
             4. '단지명' (Complex Name): Name of the industrial complex (if applicable)
             5. '설립구분' (Establishment Type): Classification of how the factory was established
             6. '입주형태' (Occupancy Type): Type of occupancy arrangement
@@ -202,9 +298,9 @@ code_generator_prompt = PromptTemplate(
             13. '종업원합계' (Total Employees): Total number of employees
 
             # Production Information
-            14. '생산품' (Products): Products manufactured at the factory
-            15. '원자재' (Raw Materials): Raw materials used in production
-            16. '공장규모' (Factory Scale): Size classification of the factory
+            14. '생산품' (Products): Products manufactured at the factory. It's not categorized and normalized, so you need use 'str.contains' to filter the products.
+            15. '원자재' (Raw Materials): Raw materials used in production. It's not categorized and normalized, so you need use 'str.contains' to filter the products.
+            16. '공장규모' (Factory Scale): Size classification of the factory. e.g. ['소기업', '중기업', '대기업']
             
             # Facility Specifications
             17. '용지면적' (Land Area): Total land area in square meters
@@ -240,26 +336,6 @@ code_generator_prompt = PromptTemplate(
     input_variables=["query", "chat_history"],
     partial_variables={"format_instructions": code_generator_format_instructions},
 )
-
-# @tool
-# def code_generator(input):
-#     '''
-#     사용자의 질문에 답하기 위해 CSV에서 쿼리할 수 있는 Python Pandas 코드를 작성하는 도구
-#     '''
-#     chain = code_generator_prompt | model | code_generator_output_parser
-    
-#     code_generator_with_history  = RunnableWithMessageHistory(
-#         chain,
-#         get_session_history,
-#         input_messages_key="query",
-#         history_messages_key="chat_history",
-#     )
-    
-#     code_generator_result = code_generator_with_history.invoke(
-#         {"query": input}, 
-#         {'configurable': {'session_id': state["session_id"]}}
-#     )
-#     return code_generator_result['code']
 
 @tool
 def code_generator(input, session_id: str | None = None):
@@ -347,6 +423,31 @@ def call_openai_with_retry(client, **kwargs):
     
 tools = [code_generator, code_executor]
 
+def capture_execution_snapshot(session_id: str, intermediate_steps) -> str | None:
+    if not intermediate_steps:
+        return None
+
+    code_snippet = None
+    execution_output = None
+
+    for step in intermediate_steps:
+        try:
+            action, observation = step
+        except (TypeError, ValueError):
+            continue
+
+        tool_name = getattr(action, "tool", None)
+
+        if tool_name == "code_generator" and isinstance(observation, str):
+            code_snippet = observation
+        elif tool_name == "code_executor":
+            execution_output = observation
+
+    if execution_output is None:
+        return None
+
+    return execution_store.save(session_id, code_snippet, execution_output)
+
 agent_prompt = ChatPromptTemplate.from_messages(
     [
         (
@@ -356,7 +457,8 @@ agent_prompt = ChatPromptTemplate.from_messages(
             "1. If q_type is 'domain_specific', you MUST use tools to generate code and execute it."
             "2. Use the result of code_executor, which is called 'return_var', to answer."
             "3. ONLY if 'return_var' is empty ([], None, or pd.DataFrame with no rows), respond with '참조할 정보가 없어서 답변할 수 없습니다.'"
-            "4. Otherwise, ALWAYS use 'return_var' as the basis of your answer."
+            "4. Otherwise, ALWAYS use 'return_var' as the basis of your answer, and you MUST ADD '[DATA]' prefix at the beginning of the answer."
+            "5. After collect the data results, describe the data specifically and explain about the results for the user."
             "Always answer in Korean, never in English."
         ),
         ("placeholder", "{chat_history}"),
@@ -413,6 +515,7 @@ def agent(state: GraphState) -> GraphState:
 
                 # 결과에서 코드 실행이 필요하면 tools 내부에서 자동 호출됨
                 state['answer'] = result['output']
+                state['execution_id'] = capture_execution_snapshot(session_id, result.get('intermediate_steps'))
                 return state
 
             except Exception as e_inner:
@@ -422,7 +525,7 @@ def agent(state: GraphState) -> GraphState:
 
     except Exception as e:
         print(f"❌ 에이전트 실행 최종 실패: {e}")
-        state['answer'] = f"죄송합니다. 질문 처리 중 오류가 발생했습니다: {str(e)[:100]}"
+        state['answer'] = f"죄송합니다. 질문 처리 중 오류가 발생했습니다. 새로운 창에서 질문해주세요."
         return state
 
 ########################################################################
@@ -464,7 +567,11 @@ async def lifespan(app: FastAPI):
     # 종료 시
     print("🛑 서버 종료")
 
-app = FastAPI(title="Juso Chatbot API", lifespan=lifespan)
+app = FastAPI(
+    title="Data Chatbot API",
+    lifespan=lifespan,
+    root_path="/projects/data-chatbot"
+)
 
 class Settings(BaseSettings):
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
@@ -544,6 +651,7 @@ async def stream_responses(request: Request):
             context='',
             answer='',
             relevance='',
+            execution_id=None,
         )
 
         try:
@@ -569,7 +677,8 @@ async def stream_responses(request: Request):
                 "answer": answer_text,
                 "session_id": client_session_id,
                 "message_count": message_count,
-                "status": "success"
+                "status": "success",
+                "execution_id": final_state.get("execution_id")
             }
             
         except asyncio.TimeoutError:
@@ -600,6 +709,14 @@ async def stream_responses(request: Request):
     except Exception as e:
         print(f"❌ API 오류: {type(e).__name__}: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/execution/{execution_id}")
+async def get_execution_result(execution_id: str):
+    record = execution_store.get(execution_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Execution result not found")
+    return record
 
 @app.post("/api/reset")
 async def reset_store(request: Request):
