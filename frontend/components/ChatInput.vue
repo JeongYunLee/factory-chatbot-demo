@@ -68,7 +68,7 @@ defineExpose({
 <style scoped>
 .chat-input {
   border-top: 1px solid #e5e7eb;
-  padding: 1rem 1.5rem;
+  padding: 1rem 2rem 3rem 2rem;
   background: #fff;
   position: sticky;
   bottom: 0;

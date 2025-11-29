@@ -60,9 +60,24 @@
             <div v-else-if="executionDetail" class="panel-content">
               <section class="panel-section">
                 <p class="section-label">실행 코드</p>
-                <pre class="code-block">
+                <div class="code-block-wrapper">
+                  <button
+                    class="code-copy-button"
+                    @click="copyToClipboard(executionDetail.code ?? '코드 정보를 찾을 수 없습니다.')"
+                    :aria-label="'코드 복사'"
+                  >
+                    <svg v-if="!copiedStates.code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </button>
+                  <pre class="code-block">
 <code>{{ executionDetail.code ?? '코드 정보를 찾을 수 없습니다.' }}</code>
-                </pre>
+                  </pre>
+                </div>
               </section>
 
               <section class="panel-section">
@@ -107,9 +122,24 @@
                 </template>
 
                 <template v-else>
-                  <pre class="code-block">
+                  <div class="code-block-wrapper">
+                    <button
+                      class="code-copy-button"
+                      @click="copyToClipboard(fallbackResultText, 'result')"
+                      :aria-label="'결과 복사'"
+                    >
+                      <svg v-if="!copiedStates.result" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                      </svg>
+                      <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                    </button>
+                    <pre class="code-block">
 <code>{{ fallbackResultText }}</code>
-                  </pre>
+                    </pre>
+                  </div>
                 </template>
               </section>
             </div>
@@ -125,7 +155,6 @@ import { ref, watch, nextTick, computed } from 'vue'
 import ChatHeader from '~/components/ChatHeader.vue'
 import ChatMessageList, { type ChatMessage } from '~/components/ChatMessageList.vue'
 import ChatInput from '~/components/ChatInput.vue'
-import '~/assets/css/main.css'
 
 interface ApiResponse {
   answer: string
@@ -177,6 +206,7 @@ const selectedExecutionId = ref<string | null>(null)
 const executionDetail = ref<ExecutionResultResponse | null>(null)
 const isExecutionLoading = ref(false)
 const executionError = ref<string | null>(null)
+const copiedStates = ref({ code: false, result: false })
 
 const isPanelOpen = computed(() => selectedExecutionId.value !== null)
 
@@ -362,6 +392,18 @@ const fallbackResultText = computed(() => {
 
   return JSON.stringify(result, null, 2)
 })
+
+const copyToClipboard = async (text: string, type: 'code' | 'result' = 'code') => {
+  try {
+    await navigator.clipboard.writeText(text)
+    copiedStates.value[type] = true
+    setTimeout(() => {
+      copiedStates.value[type] = false
+    }, 2000)
+  } catch (error) {
+    console.error('복사 실패:', error)
+  }
+}
 
 useHead({
   title: 'Factory Chatbot',
