@@ -118,26 +118,57 @@ def generate_session_id():
 
 
 class ExecutionResultStore:
+    """
+    세션별 실행 결과를 저장하는 스토어
+    - key: execution_id
+    - value: { execution_id, session_id, code, result, created_at }
+    - 별도 인덱스로 session_id -> [execution_id, ...] 관리
+    """
+
     def __init__(self):
         self._store = {}
+        self._session_index = {}  # session_id -> set(execution_id)
         self._lock = threading.RLock()
 
-    def save(self, session_id: str, code: str | None, output):
+    def save(self, session_id: str, code: str | None, output, question: str = ""):
         execution_id = str(uuid.uuid4())
         payload = {
             "execution_id": execution_id,
             "session_id": session_id,
             "code": code,
-            "result": serialize_execution_output(output),
+            "result": serialize_execution_output(output, question),
             "created_at": time.time()
         }
         with self._lock:
             self._store[execution_id] = payload
+            # 세션별 인덱스에 execution_id 등록
+            if session_id not in self._session_index:
+                self._session_index[session_id] = set()
+            self._session_index[session_id].add(execution_id)
         return execution_id
 
     def get(self, execution_id: str):
         with self._lock:
             return self._store.get(execution_id)
+
+    def clear_session(self, session_id: str | None = None):
+        """
+        특정 session_id에 해당하는 execution 결과만 삭제하거나,
+        session_id가 없으면 전체 실행 결과를 삭제.
+        """
+        with self._lock:
+            if session_id is None:
+                self._store.clear()
+                self._session_index.clear()
+                return
+
+            exec_ids = self._session_index.get(session_id)
+            if not exec_ids:
+                return
+
+            for eid in exec_ids:
+                self._store.pop(eid, None)
+            self._session_index.pop(session_id, None)
 
 
 def ensure_json_serializable(value):
@@ -169,23 +200,156 @@ def dataframe_to_rows(df: pd.DataFrame, limit: int = 50):
     return [ensure_json_serializable(record) for record in records]
 
 
-def serialize_execution_output(output):
+class VisualizationRecommendation(BaseModel):
+    chart_type: str = Field(description="Recommended chart type. Choose from ['bar_chart', 'line_chart', 'pie_chart', 'map', 'heatmap', 'scatter_plot', 'none']")
+    x_axis: str | None = Field(default=None, description="Column name for x-axis")
+    y_axis: str | None = Field(default=None, description="Column name for y-axis")
+    orientation: str | None = Field(default=None, description="For bar chart: 'horizontal' or 'vertical'")
+    has_location: bool = Field(default=False, description="Whether the data contains location information suitable for map visualization")
+    group_by: str | None = Field(default=None, description="Column name for grouping data")
+    time_series: bool = Field(default=False, description="Whether the data is time-series data")
+
+visualization_output_parser = JsonOutputParser(pydantic_object=VisualizationRecommendation)
+visualization_format_instructions = visualization_output_parser.get_format_instructions()
+
+visualization_prompt = PromptTemplate(
+    template="""
+    You are an expert data visualization analyst. Analyze the user's question and the data structure to recommend the best visualization type.
+
+    Available chart types:
+    - 'bar_chart': For comparing categories (e.g., "구별 공장 수", "업종별 직원 수")
+    - 'line_chart': For showing trends over time (e.g., "연도별 등록 건수 추이", "최근 5년간 변화")
+    - 'pie_chart': For showing proportions/percentages (e.g., "업종별 비율", "규모별 분포")
+    - 'map': For location-based data (e.g., "구별 공장 분포", "지역별 분석")
+    - 'heatmap': For 2D cross-tabulation (e.g., "구별 업종별 공장 수")
+    - 'scatter_plot': For correlation between two numeric variables (e.g., "면적 대비 직원 수")
+    - 'none': When visualization is not suitable or data is too complex
+
+    Data columns available: {columns}
+    User question: {question}
+    Data sample (first 3 rows): {sample_data}
+
+    Consider:
+    1. If the question mentions location (구, 시군구, 지역, 지도), recommend 'map' if location columns exist
+    2. If the question mentions time/trend (추이, 변화, 연도, 년도), recommend 'line_chart'
+    3. If the question asks for comparison (비교, 상위, 많다), recommend 'bar_chart'
+    4. If the question asks for proportion/ratio (비율, 분포), recommend 'pie_chart'
+    5. If data has 2 categorical dimensions, consider 'heatmap'
+    6. If data has 2 numeric variables for correlation, consider 'scatter_plot'
+
+    {format_instructions}
+    """,
+    input_variables=["question", "columns", "sample_data"],
+    partial_variables={"format_instructions": visualization_format_instructions},
+)
+
+
+def infer_visualization_type(question: str, output) -> dict | None:
+    """
+    질문과 결과 데이터를 분석하여 적절한 시각화 타입을 추론합니다.
+    """
+    try:
+        # DataFrame 또는 Series인 경우에만 시각화 추론
+        if not isinstance(output, (pd.DataFrame, pd.Series)):
+            return None
+        
+        # Series를 DataFrame으로 변환
+        if isinstance(output, pd.Series):
+            df_for_analysis = output.reset_index()
+        else:
+            df_for_analysis = output.copy()
+        
+        # 데이터가 비어있으면 None 반환
+        if len(df_for_analysis) == 0:
+            return None
+        
+        # 컬럼이 너무 많으면 시각화 비추천
+        if len(df_for_analysis.columns) > 10:
+            return {"chart_type": "none"}
+        
+        # 샘플 데이터 준비 (최대 3행)
+        sample_df = df_for_analysis.head(3)
+        sample_data = sample_df.to_dict(orient="records")
+        
+        # 컬럼 목록
+        columns = list(df_for_analysis.columns)
+        
+        # LLM을 사용하여 시각화 타입 추론
+        chain = visualization_prompt | model | visualization_output_parser
+        
+        result = chain.invoke({
+            "question": question,
+            "columns": str(columns),
+            "sample_data": str(sample_data)
+        })
+        
+        # 결과를 딕셔너리로 변환
+        visualization_meta = {
+            "chart_type": result.get("chart_type", "none"),
+            "x_axis": result.get("x_axis"),
+            "y_axis": result.get("y_axis"),
+            "orientation": result.get("orientation", "vertical"),
+            "has_location": result.get("has_location", False),
+            "group_by": result.get("group_by"),
+            "time_series": result.get("time_series", False)
+        }
+        
+        # 실제 데이터 구조에 맞게 축 정보 보정
+        if visualization_meta["chart_type"] != "none":
+            # x_axis가 지정되지 않았고 DataFrame인 경우 첫 번째 컬럼 사용
+            if not visualization_meta["x_axis"] and len(columns) > 0:
+                if isinstance(output, pd.Series):
+                    visualization_meta["x_axis"] = "index"
+                    visualization_meta["y_axis"] = "value"
+                else:
+                    # 첫 번째 컬럼이 인덱스 컬럼인 경우
+                    if columns[0] in ["index", "정제_시군구명", "정제_업종명"]:
+                        visualization_meta["x_axis"] = columns[0]
+                    # 수치형 컬럼 찾기
+                    numeric_cols = df_for_analysis.select_dtypes(include=[np.number]).columns.tolist()
+                    if numeric_cols:
+                        visualization_meta["y_axis"] = numeric_cols[0]
+            
+            # 위치 정보 확인
+            location_cols = [col for col in columns if any(keyword in col for keyword in ["시군구", "시도", "구", "지역", "주소"])]
+            if location_cols:
+                visualization_meta["has_location"] = True
+                if not visualization_meta["x_axis"]:
+                    visualization_meta["x_axis"] = location_cols[0]
+        
+        return visualization_meta
+        
+    except Exception as e:
+        print(f"⚠️ 시각화 타입 추론 실패: {e}")
+        return None
+
+
+def serialize_execution_output(output, question: str = ""):
+    # 시각화 메타데이터 추론
+    visualization_meta = infer_visualization_type(question, output) if question else None
+    
     if isinstance(output, pd.DataFrame):
-        return {
+        result = {
             "type": "table",
             "columns": list(output.columns),
             "rows": dataframe_to_rows(output),
             "row_count": int(len(output))
         }
+        if visualization_meta:
+            result["visualization"] = visualization_meta
+        return result
     if isinstance(output, pd.Series):
         series_df = output.reset_index()
         series_df.columns = ["index", "value"]
-        return {
+        result = {
             "type": "table",
             "columns": list(series_df.columns),
             "rows": dataframe_to_rows(series_df),
             "row_count": int(len(output))
         }
+        if visualization_meta:
+            result["visualization"] = visualization_meta
+        return result
     if isinstance(output, (list, tuple)):
         return {
             "type": "list",
@@ -300,7 +464,7 @@ code_generator_prompt = PromptTemplate(
             # Production Information
             14. '생산품' (Products): Products manufactured at the factory. It's not categorized and normalized, so you need use 'str.contains' to filter the products.
             15. '원자재' (Raw Materials): Raw materials used in production. It's not categorized and normalized, so you need use 'str.contains' to filter the products.
-            16. '공장규모' (Factory Scale): Size classification of the factory. e.g. ['소기업', '중기업', '대기업']
+            16. '공장규모' (Factory Scale): Size classification of the factory. e.g. ['소기업', '중기업', '대기업', '중견기업']
             
             # Facility Specifications
             17. '용지면적' (Land Area): Total land area in square meters
@@ -319,7 +483,7 @@ code_generator_prompt = PromptTemplate(
             26. '정제_시군구명' (Standardized District Name): Standardized city/county/district name
             27. '정제_시도명' (Standardized Province Name): Standardized province/metropolitan city name
             28. '정제_업종명' (Standardized Industry Name): Standardized industry name. It's not unique, so you need to calculate with '정제_대표업종' and show in '정제_업종명'
-            29. '정제_대표업종' (Standardized Primary Industry): Standardized primary industry classification. It's in code, so after use it, you need to show the name using '정제_대표업종'
+            29. '정제_대표업종' (Standardized Primary Industry): Standardized primary industry classification. It's in code, so after use it, you need to show the name using '정제_업종명' column. For example, if '정제_대표업종' is 'a11', you need to show the name using '제조업' column.
             29. '정제_용도지역' (Standardized Zoning District): Standardized zoning/land use district
             30. '정제_지목' (Standardized Land Category): Standardized land category classification
 
@@ -423,7 +587,7 @@ def call_openai_with_retry(client, **kwargs):
     
 tools = [code_generator, code_executor]
 
-def capture_execution_snapshot(session_id: str, intermediate_steps) -> str | None:
+def capture_execution_snapshot(session_id: str, intermediate_steps, question: str = "") -> str | None:
     if not intermediate_steps:
         return None
 
@@ -446,7 +610,7 @@ def capture_execution_snapshot(session_id: str, intermediate_steps) -> str | Non
     if execution_output is None:
         return None
 
-    return execution_store.save(session_id, code_snippet, execution_output)
+    return execution_store.save(session_id, code_snippet, execution_output, question)
 
 agent_prompt = ChatPromptTemplate.from_messages(
     [
@@ -515,7 +679,7 @@ def agent(state: GraphState) -> GraphState:
 
                 # 결과에서 코드 실행이 필요하면 tools 내부에서 자동 호출됨
                 state['answer'] = result['output']
-                state['execution_id'] = capture_execution_snapshot(session_id, result.get('intermediate_steps'))
+                state['execution_id'] = capture_execution_snapshot(session_id, result.get('intermediate_steps'), state['question'])
                 return state
 
             except Exception as e_inner:
@@ -546,7 +710,7 @@ memory = MemorySaver()
 graph = workflow.compile(checkpointer=memory)  
 
 
- ##############################################################################################################
+##############################################################################################################
 ################################################Chat Interface################################################
 ##############################################################################################################
 
@@ -723,14 +887,16 @@ async def reset_store(request: Request):
     try:
         data = await request.json()
         session_id_to_reset = data.get('session_id')
-        
+
         if session_id_to_reset:
             # 특정 세션만 초기화
             message_count = thread_safe_store.clear_session(session_id_to_reset)
+            # 해당 세션의 실행 결과도 함께 삭제
+            execution_store.clear_session(session_id_to_reset)
             new_session_id = generate_session_id()
-            
+
             print(f"🗑️ 세션 삭제: {session_id_to_reset[:8]}... ({message_count}개 메시지)")
-            
+
             return {
                 "status": "Session reset successfully",
                 "session_id": new_session_id,
@@ -739,10 +905,12 @@ async def reset_store(request: Request):
         else:
             # 모든 세션 초기화
             total_sessions, total_messages = thread_safe_store.clear_session()
+            # 모든 실행 결과 초기화
+            execution_store.clear_session()
             new_session_id = generate_session_id()
-            
+
             print(f"🧹 전체 초기화: {total_sessions}개 세션, {total_messages}개 메시지 삭제")
-            
+
             return {
                 "status": "All sessions reset successfully",
                 "session_id": new_session_id,

@@ -34,7 +34,7 @@
           <div class="panel-header">
             <div class="panel-header-content">
               <p class="panel-title">데이터 기반 결과</p>
-              <p class="panel-subtitle">실행 코드와 출력 테이블을 확인하세요.</p>
+              <p class="panel-subtitle">실행 코드와 출력 결과를 확인하세요.</p>
             </div>
             <button class="panel-close-button" @click="closePanel" aria-label="패널 닫기">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -153,7 +153,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed } from 'vue'
 import ChatHeader from '~/components/ChatHeader.vue'
-import ChatMessageList, { type ChatMessage } from '~/components/ChatMessageList.vue'
+import ChatMessageList, { type ChatMessage, type VisualizationMeta } from '~/components/ChatMessageList.vue'
 import ChatInput from '~/components/ChatInput.vue'
 
 interface ApiResponse {
@@ -172,6 +172,7 @@ interface ExecutionResultPayload {
   row_count?: number
   data?: Record<string, any>
   value?: string | number | null
+  visualization?: VisualizationMeta | null
 }
 
 interface ExecutionResultResponse {
@@ -264,13 +265,45 @@ const sendMessage = async (content: string) => {
     const executionId = response.execution_id ?? null
     const hasData = Boolean(executionId)
 
+    let visualizationData: Array<Record<string, any>> | null = null
+    let visualizationMeta: VisualizationMeta | null = null
+
+    // 실행 ID가 있으면 바로 실행 결과를 조회해서 시각화 정보 추출
+    if (hasData && executionId) {
+      try {
+        const executionResponse = await fetch(`${baseURL}execution/${executionId}`)
+        if (executionResponse.ok) {
+          const executionJson = (await executionResponse.json()) as ExecutionResultResponse
+          const result = executionJson.result
+          const vizMeta = result?.visualization ?? null
+
+          if (
+            result &&
+            result.type === 'table' &&
+            result.rows &&
+            result.rows.length > 0 &&
+            vizMeta &&
+            vizMeta.chart_type &&
+            vizMeta.chart_type !== 'none'
+          ) {
+            visualizationData = result.rows
+            visualizationMeta = vizMeta
+          }
+        }
+      } catch (error) {
+        console.error('실행 결과 조회 중 오류:', error)
+      }
+    }
+
     messages.value.push({
       id: createId(),
       role: 'bot',
       text: answerText,
       timestamp: Date.now(),
       hasData,
-      executionId
+      executionId,
+      visualizationData,
+      visualizationMeta
     })
   } catch (error: unknown) {
     errorMessage.value = parseError(error)

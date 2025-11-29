@@ -46,7 +46,8 @@ const handleSubmit = () => {
   if (!content || props.disabled) {
     return
   }
-  emit('submit', content)
+  // 마지막 글자가 잘리는 것을 방지하기 위해 끝에 빈 스페이스 추가
+  emit('submit', content + ' ')
 }
 
 const handleKeydown = (event: KeyboardEvent) => {

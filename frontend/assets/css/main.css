@@ -182,6 +182,38 @@ body {
     stroke: currentColor;
 }
 
+.panel-tabs {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0 1.5rem;
+    border-bottom: 1px solid #e2e8f0;
+    background: #fff;
+}
+
+.tab-button {
+    padding: 0.75rem 1.25rem;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #64748b;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-bottom: -1px;
+}
+
+.tab-button:hover {
+    color: #2563eb;
+    background: rgba(37, 99, 235, 0.05);
+}
+
+.tab-button.active {
+    color: #2563eb;
+    border-bottom-color: #2563eb;
+    font-weight: 600;
+}
+
 .panel-body {
     flex: 1;
     display: flex;
@@ -282,10 +314,9 @@ body {
 }
 
 .table-wrapper {
-    max-height: 320px;
-    overflow: auto;
     border: 1px solid #e2e8f0;
     border-radius: 16px;
+    overflow: visible;
 }
 
 .data-table {
@@ -306,9 +337,6 @@ body {
 .data-table th {
     background: #f8fafc;
     font-weight: 600;
-    position: sticky;
-    top: 0;
-    z-index: 1;
 }
 
 .data-table tbody tr:nth-child(even) {
