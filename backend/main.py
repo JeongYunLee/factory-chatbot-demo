@@ -118,8 +118,16 @@ def generate_session_id():
 
 
 class ExecutionResultStore:
+    """
+    세션별 실행 결과를 저장하는 스토어
+    - key: execution_id
+    - value: { execution_id, session_id, code, result, created_at }
+    - 별도 인덱스로 session_id -> [execution_id, ...] 관리
+    """
+
     def __init__(self):
         self._store = {}
+        self._session_index = {}  # session_id -> set(execution_id)
         self._lock = threading.RLock()
 
     def save(self, session_id: str, code: str | None, output, question: str = ""):
@@ -133,11 +141,34 @@ class ExecutionResultStore:
         }
         with self._lock:
             self._store[execution_id] = payload
+            # 세션별 인덱스에 execution_id 등록
+            if session_id not in self._session_index:
+                self._session_index[session_id] = set()
+            self._session_index[session_id].add(execution_id)
         return execution_id
 
     def get(self, execution_id: str):
         with self._lock:
             return self._store.get(execution_id)
+
+    def clear_session(self, session_id: str | None = None):
+        """
+        특정 session_id에 해당하는 execution 결과만 삭제하거나,
+        session_id가 없으면 전체 실행 결과를 삭제.
+        """
+        with self._lock:
+            if session_id is None:
+                self._store.clear()
+                self._session_index.clear()
+                return
+
+            exec_ids = self._session_index.get(session_id)
+            if not exec_ids:
+                return
+
+            for eid in exec_ids:
+                self._store.pop(eid, None)
+            self._session_index.pop(session_id, None)
 
 
 def ensure_json_serializable(value):
@@ -856,14 +887,16 @@ async def reset_store(request: Request):
     try:
         data = await request.json()
         session_id_to_reset = data.get('session_id')
-        
+
         if session_id_to_reset:
             # 특정 세션만 초기화
             message_count = thread_safe_store.clear_session(session_id_to_reset)
+            # 해당 세션의 실행 결과도 함께 삭제
+            execution_store.clear_session(session_id_to_reset)
             new_session_id = generate_session_id()
-            
+
             print(f"🗑️ 세션 삭제: {session_id_to_reset[:8]}... ({message_count}개 메시지)")
-            
+
             return {
                 "status": "Session reset successfully",
                 "session_id": new_session_id,
@@ -872,10 +905,12 @@ async def reset_store(request: Request):
         else:
             # 모든 세션 초기화
             total_sessions, total_messages = thread_safe_store.clear_session()
+            # 모든 실행 결과 초기화
+            execution_store.clear_session()
             new_session_id = generate_session_id()
-            
+
             print(f"🧹 전체 초기화: {total_sessions}개 세션, {total_messages}개 메시지 삭제")
-            
+
             return {
                 "status": "All sessions reset successfully",
                 "session_id": new_session_id,
