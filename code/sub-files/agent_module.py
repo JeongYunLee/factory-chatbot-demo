@@ -48,7 +48,7 @@ agent_prompt = ChatPromptTemplate.from_messages(
             "1. If q_type is 'domain_specific', you MUST use tools to generate code and execute it."
             "2. Use the result of code_executor, which is called 'return_var', to answer."
             "3. ONLY if 'return_var' is empty ([], None, or pd.DataFrame with no rows), respond with '참조할 정보가 없어서 답변할 수 없습니다.'"
-            "4. Otherwise, ALWAYS use 'return_var' as the basis of your answer, and you MUST ADD '[DATA]' prefix at the beginning of the answer."
+            "4. Otherwise, ALWAYS use 'return_var' as the basis of your answer."
             "5. After collect the data results, describe the data specifically and explain about the results for the user."
             "Always answer in Korean, never in English.",
         ),

@@ -28,7 +28,6 @@ class ThreadSafeStore:
         with self._lock:
             if session_id not in self._store:
                 self._store[session_id] = ChatMessageHistory()
-                print(f"🆕 새로운 세션 히스토리 생성: {session_id[:8]}...")
             return self._store[session_id]
 
     def clear_session(self, session_id: str | None = None):

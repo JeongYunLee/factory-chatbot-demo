@@ -677,7 +677,7 @@ def agent(state: GraphState) -> GraphState:
             history_messages_key="chat_history",
         )
 
-        max_attempts = 3
+        max_attempts = 5
         for attempt in range(max_attempts):
             try:
                 # Agent 실행 - 원본 질문 그대로 전달
