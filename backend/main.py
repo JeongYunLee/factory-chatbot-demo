@@ -410,9 +410,7 @@ router_prompt = PromptTemplate(
 
 def router(state: GraphState) -> GraphState:
     # 디버깅: Router에서 받은 질문 확인
-    question = state["question"]
-    print(f"🔀 Router 입력 질문 길이: {len(question)}, 끝 5자: {repr(question[-5:]) if len(question) >= 5 else repr(question)}")
-    
+    question = state["question"] 
     chain = router_prompt | model | router_output_parser
     
     router_with_history  = RunnableWithMessageHistory(
@@ -522,9 +520,6 @@ def code_generator(input, session_id: str | None = None):
     """
     사용자의 질문에 답하기 위해 CSV에서 쿼리할 수 있는 Python Pandas 코드를 작성하는 도구
     """
-    # 디버깅: code_generator에 전달된 입력 확인
-    print(f"📝 code_generator 입력 길이: {len(input)}, 끝 5자: {repr(input[-5:]) if len(input) >= 5 else repr(input)}")
-    
     chain = code_generator_prompt | model | code_generator_output_parser
 
     resolved_session_id = session_id or generate_session_id()
@@ -703,8 +698,7 @@ def agent(state: GraphState) -> GraphState:
                     "relevance": state.get("relevance"),
                     "session_id": session_id  # <-- session_id 명시적 전달
                 }
-                print(f"🚀 Agent invoke 입력 데이터의 input 길이: {len(input_data['input'])}, 끝 5자: {repr(input_data['input'][-5:]) if len(input_data['input']) >= 5 else repr(input_data['input'])}")
-                
+
                 # 콜백 비활성화하여 RootListenersTracer 에러 방지
                 config = RunnableConfig(
                     configurable={'session_id': session_id},
@@ -833,9 +827,6 @@ async def stream_responses(request: Request):
         if len(message) > 1000:
             raise HTTPException(status_code=400, detail="Message too long (max 1000 characters)")
 
-        # 디버깅: 메시지 원본 길이 및 끝 문자 확인
-        print(f"📝 수신 메시지 길이: {len(message)}, 끝 문자: {repr(message[-5:]) if len(message) >= 5 else repr(message)}")
-        print(f"📝 전체 메시지: {repr(message)}")
         
         # 메시지 끝에 빈 스페이스가 없으면 추가 (마지막 글자 보호)
         if not message.endswith(' '):
