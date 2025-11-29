@@ -39,6 +39,7 @@
           />
         </div>
         <div
+          v-if="message.text"
           class="bubble-text"
           v-html="renderMarkdown(message.text)"
         />
@@ -54,7 +55,25 @@
         </svg>
       </div>
       <div class="bubble typing">
-        <span class="dot" v-for="index in 3" :key="index"></span>
+        <div class="typing-dots">
+          <span class="dot" v-for="index in 3" :key="index"></span>
+        </div>
+        <div
+          v-if="processingSteps && processingSteps.length > 0"
+          class="processing-steps"
+        >
+          <div
+            v-for="(step, index) in processingSteps"
+            :key="index"
+            class="processing-step"
+          >
+            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            <span>{{ step }}</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -83,11 +102,13 @@ export interface ChatMessage {
   executionId?: string | null
   visualizationData?: Array<Record<string, any>> | null
   visualizationMeta?: VisualizationMeta | null
+  processingSteps?: string[] | null
 }
 
 defineProps<{
   messages: ChatMessage[]
   isLoading: boolean
+  processingSteps?: string[] | null
 }>()
 
 const emit = defineEmits<{
@@ -236,10 +257,18 @@ const renderMarkdown = (text: string) => md.render(text ?? '')
 }
 
 .typing {
-  display: inline-flex;
-  gap: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
   background: #fff;
   border: 1px solid #dbeafe;
+  min-width: 60px;
+}
+
+.typing-dots {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-self: flex-start;
 }
 
 .typing-avatar {
@@ -272,6 +301,51 @@ const renderMarkdown = (text: string) => md.render(text ?? '')
   40% {
     opacity: 0.8;
     transform: translateY(-2px);
+  }
+}
+
+.processing-steps {
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.processing-step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #64748b;
+  animation: fadeIn 0.3s ease-in;
+}
+
+.processing-step .step-icon {
+  width: 16px;
+  height: 16px;
+  color: #3b82f6;
+  animation: spin 2s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 </style>

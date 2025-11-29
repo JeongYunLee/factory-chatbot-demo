@@ -1,6 +1,7 @@
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.runnables import RunnableConfig
 
 from config import model
 from state import GraphState, get_session_history
@@ -49,8 +50,10 @@ agent_prompt = ChatPromptTemplate.from_messages(
             "2. Use the result of code_executor, which is called 'return_var', to answer."
             "3. ONLY if 'return_var' is empty ([], None, or pd.DataFrame with no rows), respond with '참조할 정보가 없어서 답변할 수 없습니다.'"
             "4. Otherwise, ALWAYS use 'return_var' as the basis of your answer."
-            "5. After collect the data results, describe the data specifically and explain about the results for the user."
-            "Always answer in Korean, never in English.",
+            "5. When you use Koean text, be careful about the encoding and code(e.g. '(주)' & '㈜' --> '(주)' is correct.)"
+            "6. When you use number, be careful about the type (e.g. 114, '114') When you can't get the result, retry with other type."
+            "7. After collect the data results, describe the data specifically and explain about the results for the user."
+            "Always answer in Korean, never in English."
         ),
         ("placeholder", "{chat_history}"),
         ("human", "{input}"),
@@ -68,8 +71,8 @@ def agent(state: GraphState) -> GraphState:
     """
     session_id = state["session_id"]
     # 히스토리에 dict 그대로 넣지 말고 문자열로 변환
-    chat_history = get_session_history(session_id)
-    chat_history.add_user_message(f"question: {state['question']}, q_type: {state['q_type']}")
+    # chat_history = get_session_history(session_id)
+    # chat_history.add_user_message(f"question: {state['question']}, q_type: {state['q_type']}")
 
     try:
         # Agent 생성
@@ -95,6 +98,11 @@ def agent(state: GraphState) -> GraphState:
         for attempt in range(max_attempts):
             try:
                 # Agent 실행
+                # 콜백 비활성화하여 RootListenersTracer 에러 방지
+                config = RunnableConfig(
+                    configurable={"session_id": session_id},
+                    callbacks=[]  # 콜백 비활성화
+                )
                 result = agent_with_history.invoke(
                     {
                         "input": state["question"],
@@ -102,7 +110,7 @@ def agent(state: GraphState) -> GraphState:
                         "relevance": state.get("relevance"),
                         "session_id": session_id,  # <-- session_id 명시적 전달
                     },
-                    {"configurable": {"session_id": session_id}},
+                    config,
                 )
 
                 # 결과에서 코드 실행이 필요하면 tools 내부에서 자동 호출됨

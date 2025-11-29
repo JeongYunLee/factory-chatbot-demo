@@ -2,6 +2,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.runnables import RunnableConfig
 
 from config import model
 from state import GraphState, get_session_history
@@ -24,7 +25,7 @@ router_prompt = PromptTemplate(
             Questions unrelated to data query, such as translating English to Korean, asking for general knowledge (e.g., "What is the capital of South Korea?"), or queries that can be answered through a web search.
 
             [domain_specific]
-            Questions related to 'factory' domain and data query, such as 'count the unique values of factories in Seoul', or count 'the number of rows in a table'.
+            Questions related to 'factory' or 'company' domain and data query, such as 'count the unique values of factories in Seoul', or count 'the number of rows in a table'.
 
             <Output format>: Always respond with either "general" or "domain_specific" and nothing else. {format_instructions}
             <chat_history>: {chat_history}
@@ -49,9 +50,16 @@ def router(state: GraphState) -> GraphState:
         history_messages_key="chat_history",
     )
 
+    # 콜백 비활성화하여 RootListenersTracer 에러 방지
+    # router_with_history.invoke()가 딕셔너리를 반환하는데, 
+    # LangChain 콜백 시스템이 이를 추적하려고 할 때 에러 발생
+    config = RunnableConfig(
+        configurable={"session_id": state["session_id"]},
+        callbacks=[]  # 콜백 비활성화
+    )
     router_result = router_with_history.invoke(
         {"query": state["question"]},
-        {"configurable": {"session_id": state["session_id"]}},
+        config,
     )
     state["q_type"] = router_result["type"]
     return state

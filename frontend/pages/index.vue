@@ -12,6 +12,7 @@
           <ChatMessageList
             :messages="messages"
             :is-loading="isLoading"
+            :processing-steps="currentProcessingSteps"
             @show-data="handleDataRequest"
           />
         </div>
@@ -189,6 +190,7 @@ const baseURL = String(config.public.apiUrl ?? '')
 const sessionId = useState<string | null>('factory-session', () => null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
+const currentProcessingSteps = ref<string[] | null>(null)
 
 const createId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`
 
@@ -243,6 +245,35 @@ const sendMessage = async (content: string) => {
 
   isLoading.value = true
   errorMessage.value = null
+  currentProcessingSteps.value = null
+
+  // 처리 시간 추적 및 진행 상태 표시를 위한 변수
+  const startTime = Date.now()
+  let processingInterval: ReturnType<typeof setInterval> | null = null
+
+  // 진행 상태 단계 정의
+  const steps = [
+    '데이터를 분석 중 입니다',
+    '데이터 기반 답변을 생성중입니다'
+  ]
+
+  // 7초 후부터 진행 상태 표시 시작
+  const checkProcessingTime = () => {
+    const elapsed = Date.now() - startTime
+    if (elapsed >= 7000) {
+      // 10초마다 다음 단계 추가
+      const stepIndex = Math.floor((elapsed - 7000) / 10000)
+      if (stepIndex < steps.length) {
+        currentProcessingSteps.value = steps.slice(0, stepIndex + 1)
+      } else {
+        // 모든 단계가 표시된 후에도 마지막 단계 유지
+        currentProcessingSteps.value = steps
+      }
+    }
+  }
+
+  // 진행 상태 체크를 위한 인터벌 시작 (1초마다 체크)
+  processingInterval = setInterval(checkProcessingTime, 1000)
 
   try {
     const requestBody = {
@@ -319,6 +350,14 @@ const sendMessage = async (content: string) => {
       }
     }
 
+    // 진행 상태 인터벌 정리 및 진행 상태 제거
+    if (processingInterval) {
+      clearInterval(processingInterval)
+      processingInterval = null
+    }
+    currentProcessingSteps.value = null
+
+    // 최종 답변 메시지 생성
     messages.value.push({
       id: createId(),
       role: 'bot',
@@ -340,6 +379,14 @@ const sendMessage = async (content: string) => {
       }
     }
     
+    // 진행 상태 인터벌 정리 및 진행 상태 제거
+    if (processingInterval) {
+      clearInterval(processingInterval)
+      processingInterval = null
+    }
+    currentProcessingSteps.value = null
+
+    // 에러 메시지 생성
     messages.value.push({
       id: createId(),
       role: 'bot',
@@ -349,6 +396,13 @@ const sendMessage = async (content: string) => {
   } finally {
     isLoading.value = false
     chatInputRef.value?.clearInput()
+    
+    // 진행 상태 인터벌 정리 및 진행 상태 제거 (안전장치)
+    if (processingInterval) {
+      clearInterval(processingInterval)
+      processingInterval = null
+    }
+    currentProcessingSteps.value = null
   }
 }
 
