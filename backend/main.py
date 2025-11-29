@@ -433,7 +433,7 @@ code_generator_prompt = PromptTemplate(
             # Production Information
             14. '생산품' (Products): Products manufactured at the factory. It's not categorized and normalized, so you need use 'str.contains' to filter the products.
             15. '원자재' (Raw Materials): Raw materials used in production. It's not categorized and normalized, so you need use 'str.contains' to filter the products.
-            16. '공장규모' (Factory Scale): Size classification of the factory. e.g. ['소기업', '중기업', '대기업']
+            16. '공장규모' (Factory Scale): Size classification of the factory. e.g. ['소기업', '중기업', '대기업', '중견기업']
             
             # Facility Specifications
             17. '용지면적' (Land Area): Total land area in square meters
@@ -452,7 +452,7 @@ code_generator_prompt = PromptTemplate(
             26. '정제_시군구명' (Standardized District Name): Standardized city/county/district name
             27. '정제_시도명' (Standardized Province Name): Standardized province/metropolitan city name
             28. '정제_업종명' (Standardized Industry Name): Standardized industry name. It's not unique, so you need to calculate with '정제_대표업종' and show in '정제_업종명'
-            29. '정제_대표업종' (Standardized Primary Industry): Standardized primary industry classification. It's in code, so after use it, you need to show the name using '정제_대표업종'
+            29. '정제_대표업종' (Standardized Primary Industry): Standardized primary industry classification. It's in code, so after use it, you need to show the name using '정제_업종명' column. For example, if '정제_대표업종' is 'a11', you need to show the name using '제조업' column.
             29. '정제_용도지역' (Standardized Zoning District): Standardized zoning/land use district
             30. '정제_지목' (Standardized Land Category): Standardized land category classification
 
