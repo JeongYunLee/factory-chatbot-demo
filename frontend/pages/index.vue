@@ -34,13 +34,31 @@
           <div class="panel-header">
             <div class="panel-header-content">
               <p class="panel-title">데이터 기반 결과</p>
-              <p class="panel-subtitle">실행 코드와 출력 테이블을 확인하세요.</p>
+              <p class="panel-subtitle">실행 코드와 출력 결과를 확인하세요.</p>
             </div>
             <button class="panel-close-button" @click="closePanel" aria-label="패널 닫기">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
               </svg>
+            </button>
+          </div>
+
+          <div v-if="executionDetail && executionDetail.result?.type === 'table'" class="panel-tabs">
+            <button
+              class="tab-button"
+              :class="{ active: activeTab === 'data' }"
+              @click="activeTab = 'data'"
+            >
+              데이터
+            </button>
+            <button
+              v-if="executionDetail.result?.visualization && executionDetail.result.visualization.chart_type !== 'none'"
+              class="tab-button"
+              :class="{ active: activeTab === 'visualization' }"
+              @click="activeTab = 'visualization'"
+            >
+              시각화
             </button>
           </div>
 
@@ -80,7 +98,8 @@
                 </div>
               </section>
 
-              <section class="panel-section">
+              <!-- 데이터 탭 -->
+              <section v-if="activeTab === 'data'" class="panel-section">
                 <p class="section-label">출력 결과</p>
                 <template
                   v-if="
@@ -142,6 +161,16 @@
                   </div>
                 </template>
               </section>
+
+              <!-- 시각화 탭 -->
+              <section v-if="activeTab === 'visualization'" class="panel-section">
+                <p class="section-label">시각화</p>
+                <VisualizationPanel
+                  v-if="executionDetail.result?.type === 'table' && executionDetail.result.rows"
+                  :data="executionDetail.result.rows"
+                  :visualization-meta="executionDetail.result.visualization"
+                />
+              </section>
             </div>
           </div>
         </aside>
@@ -155,6 +184,7 @@ import { ref, watch, nextTick, computed } from 'vue'
 import ChatHeader from '~/components/ChatHeader.vue'
 import ChatMessageList, { type ChatMessage } from '~/components/ChatMessageList.vue'
 import ChatInput from '~/components/ChatInput.vue'
+import VisualizationPanel from '~/components/VisualizationPanel.vue'
 
 interface ApiResponse {
   answer: string
@@ -165,6 +195,16 @@ interface ApiResponse {
   execution_id?: string | null
 }
 
+interface VisualizationMeta {
+  chart_type: string
+  x_axis?: string | null
+  y_axis?: string | null
+  orientation?: string | null
+  has_location?: boolean
+  group_by?: string | null
+  time_series?: boolean
+}
+
 interface ExecutionResultPayload {
   type: 'table' | 'list' | 'object' | 'text'
   columns?: string[]
@@ -172,6 +212,7 @@ interface ExecutionResultPayload {
   row_count?: number
   data?: Record<string, any>
   value?: string | number | null
+  visualization?: VisualizationMeta | null
 }
 
 interface ExecutionResultResponse {
@@ -207,6 +248,7 @@ const executionDetail = ref<ExecutionResultResponse | null>(null)
 const isExecutionLoading = ref(false)
 const executionError = ref<string | null>(null)
 const copiedStates = ref({ code: false, result: false })
+const activeTab = ref<'data' | 'visualization'>('data')
 
 const isPanelOpen = computed(() => selectedExecutionId.value !== null)
 
@@ -264,13 +306,39 @@ const sendMessage = async (content: string) => {
     const executionId = response.execution_id ?? null
     const hasData = Boolean(executionId)
 
+    // 시각화 데이터 가져오기
+    let visualizationData: Array<Record<string, any>> | null = null
+    let visualizationMeta: VisualizationMeta | null = null
+
+    if (executionId) {
+      try {
+        const executionResponse = await fetch(`${baseURL}execution/${executionId}`)
+        if (executionResponse.ok) {
+          const executionDetail = (await executionResponse.json()) as ExecutionResultResponse
+          if (
+            executionDetail.result?.type === 'table' &&
+            executionDetail.result.rows &&
+            executionDetail.result.visualization &&
+            executionDetail.result.visualization.chart_type !== 'none'
+          ) {
+            visualizationData = executionDetail.result.rows
+            visualizationMeta = executionDetail.result.visualization
+          }
+        }
+      } catch (error) {
+        console.error('시각화 데이터 로드 실패:', error)
+      }
+    }
+
     messages.value.push({
       id: createId(),
       role: 'bot',
       text: answerText,
       timestamp: Date.now(),
       hasData,
-      executionId
+      executionId,
+      visualizationData,
+      visualizationMeta
     })
   } catch (error: unknown) {
     errorMessage.value = parseError(error)
@@ -330,6 +398,7 @@ const handleDataRequest = async (executionId: string | null | undefined) => {
   executionDetail.value = null
   executionError.value = null
   isExecutionLoading.value = true
+  activeTab.value = 'data' // 탭 초기화
 
   try {
     const response = await fetch(`${baseURL}execution/${executionId}`)
@@ -337,6 +406,11 @@ const handleDataRequest = async (executionId: string | null | undefined) => {
       throw new Error(`HTTP ${response.status}`)
     }
     executionDetail.value = (await response.json()) as ExecutionResultResponse
+    // 시각화 메타데이터가 있으면 시각화 탭으로 자동 전환
+    if (executionDetail.value?.result?.visualization && 
+        executionDetail.value.result.visualization.chart_type !== 'none') {
+      activeTab.value = 'visualization'
+    }
   } catch (error) {
     executionError.value = parseError(error)
   } finally {
@@ -349,6 +423,7 @@ const closePanel = () => {
   executionDetail.value = null
   executionError.value = null
   isExecutionLoading.value = false
+  activeTab.value = 'data'
 }
 
 const formatCellValue = (value: unknown) => {

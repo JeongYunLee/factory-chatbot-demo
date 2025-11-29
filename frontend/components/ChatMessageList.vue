@@ -33,6 +33,15 @@
           class="bubble-text"
           v-html="renderMarkdown(message.text)"
         />
+        <div
+          v-if="message.role === 'bot' && message.visualizationData && message.visualizationMeta && message.visualizationMeta.chart_type !== 'none'"
+          class="message-visualization"
+        >
+          <VisualizationPanel
+            :data="message.visualizationData"
+            :visualization-meta="message.visualizationMeta"
+          />
+        </div>
       </div>
     </div>
 
@@ -53,6 +62,17 @@
 
 <script setup lang="ts">
 import MarkdownIt from 'markdown-it'
+import VisualizationPanel from './VisualizationPanel.vue'
+
+export interface VisualizationMeta {
+  chart_type: string
+  x_axis?: string | null
+  y_axis?: string | null
+  orientation?: string | null
+  has_location?: boolean
+  group_by?: string | null
+  time_series?: boolean
+}
 
 export interface ChatMessage {
   id: string
@@ -61,6 +81,8 @@ export interface ChatMessage {
   timestamp: number
   hasData?: boolean
   executionId?: string | null
+  visualizationData?: Array<Record<string, any>> | null
+  visualizationMeta?: VisualizationMeta | null
 }
 
 defineProps<{
@@ -173,6 +195,12 @@ const renderMarkdown = (text: string) => md.render(text ?? '')
 .bubble-text :deep(a) {
   color: inherit;
   text-decoration: underline;
+}
+
+.message-visualization {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .avatar {
