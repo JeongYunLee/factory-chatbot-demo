@@ -6,7 +6,7 @@ services:
     volumes:
       - ../code:/app/code
       - ./backend:/app
-      - ../data:/app/data
+      - ./backend/data:/app/data
     environment:
       - PYTHONPATH=/app
     env_file:
