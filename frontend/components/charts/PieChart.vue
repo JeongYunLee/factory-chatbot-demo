@@ -130,7 +130,7 @@ const chartOption = computed(() => {
 <style scoped>
 .chart-container {
   width: 100%;
-  padding: 1rem;
+  padding: 0rem;
 }
 </style>
 

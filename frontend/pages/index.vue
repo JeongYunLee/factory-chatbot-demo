@@ -44,24 +44,6 @@
             </button>
           </div>
 
-          <div v-if="executionDetail && executionDetail.result?.type === 'table'" class="panel-tabs">
-            <button
-              class="tab-button"
-              :class="{ active: activeTab === 'data' }"
-              @click="activeTab = 'data'"
-            >
-              데이터
-            </button>
-            <button
-              v-if="executionDetail.result?.visualization && executionDetail.result.visualization.chart_type !== 'none'"
-              class="tab-button"
-              :class="{ active: activeTab === 'visualization' }"
-              @click="activeTab = 'visualization'"
-            >
-              시각화
-            </button>
-          </div>
-
           <div class="panel-body">
             <div v-if="!selectedExecutionId" class="panel-placeholder">
               데이터 기반 답변 버튼을 누르면 실행 코드와 결과가 이곳에 표시됩니다.
@@ -98,8 +80,7 @@
                 </div>
               </section>
 
-              <!-- 데이터 탭 -->
-              <section v-if="activeTab === 'data'" class="panel-section">
+              <section class="panel-section">
                 <p class="section-label">출력 결과</p>
                 <template
                   v-if="
@@ -161,16 +142,6 @@
                   </div>
                 </template>
               </section>
-
-              <!-- 시각화 탭 -->
-              <section v-if="activeTab === 'visualization'" class="panel-section">
-                <p class="section-label">시각화</p>
-                <VisualizationPanel
-                  v-if="executionDetail.result?.type === 'table' && executionDetail.result.rows"
-                  :data="executionDetail.result.rows"
-                  :visualization-meta="executionDetail.result.visualization"
-                />
-              </section>
             </div>
           </div>
         </aside>
@@ -184,7 +155,6 @@ import { ref, watch, nextTick, computed } from 'vue'
 import ChatHeader from '~/components/ChatHeader.vue'
 import ChatMessageList, { type ChatMessage } from '~/components/ChatMessageList.vue'
 import ChatInput from '~/components/ChatInput.vue'
-import VisualizationPanel from '~/components/VisualizationPanel.vue'
 
 interface ApiResponse {
   answer: string
@@ -195,16 +165,6 @@ interface ApiResponse {
   execution_id?: string | null
 }
 
-interface VisualizationMeta {
-  chart_type: string
-  x_axis?: string | null
-  y_axis?: string | null
-  orientation?: string | null
-  has_location?: boolean
-  group_by?: string | null
-  time_series?: boolean
-}
-
 interface ExecutionResultPayload {
   type: 'table' | 'list' | 'object' | 'text'
   columns?: string[]
@@ -212,7 +172,6 @@ interface ExecutionResultPayload {
   row_count?: number
   data?: Record<string, any>
   value?: string | number | null
-  visualization?: VisualizationMeta | null
 }
 
 interface ExecutionResultResponse {
@@ -248,7 +207,6 @@ const executionDetail = ref<ExecutionResultResponse | null>(null)
 const isExecutionLoading = ref(false)
 const executionError = ref<string | null>(null)
 const copiedStates = ref({ code: false, result: false })
-const activeTab = ref<'data' | 'visualization'>('data')
 
 const isPanelOpen = computed(() => selectedExecutionId.value !== null)
 
@@ -306,39 +264,13 @@ const sendMessage = async (content: string) => {
     const executionId = response.execution_id ?? null
     const hasData = Boolean(executionId)
 
-    // 시각화 데이터 가져오기
-    let visualizationData: Array<Record<string, any>> | null = null
-    let visualizationMeta: VisualizationMeta | null = null
-
-    if (executionId) {
-      try {
-        const executionResponse = await fetch(`${baseURL}execution/${executionId}`)
-        if (executionResponse.ok) {
-          const executionDetail = (await executionResponse.json()) as ExecutionResultResponse
-          if (
-            executionDetail.result?.type === 'table' &&
-            executionDetail.result.rows &&
-            executionDetail.result.visualization &&
-            executionDetail.result.visualization.chart_type !== 'none'
-          ) {
-            visualizationData = executionDetail.result.rows
-            visualizationMeta = executionDetail.result.visualization
-          }
-        }
-      } catch (error) {
-        console.error('시각화 데이터 로드 실패:', error)
-      }
-    }
-
     messages.value.push({
       id: createId(),
       role: 'bot',
       text: answerText,
       timestamp: Date.now(),
       hasData,
-      executionId,
-      visualizationData,
-      visualizationMeta
+      executionId
     })
   } catch (error: unknown) {
     errorMessage.value = parseError(error)
@@ -398,7 +330,6 @@ const handleDataRequest = async (executionId: string | null | undefined) => {
   executionDetail.value = null
   executionError.value = null
   isExecutionLoading.value = true
-  activeTab.value = 'data' // 탭 초기화
 
   try {
     const response = await fetch(`${baseURL}execution/${executionId}`)
@@ -406,11 +337,6 @@ const handleDataRequest = async (executionId: string | null | undefined) => {
       throw new Error(`HTTP ${response.status}`)
     }
     executionDetail.value = (await response.json()) as ExecutionResultResponse
-    // 시각화 메타데이터가 있으면 시각화 탭으로 자동 전환
-    if (executionDetail.value?.result?.visualization && 
-        executionDetail.value.result.visualization.chart_type !== 'none') {
-      activeTab.value = 'visualization'
-    }
   } catch (error) {
     executionError.value = parseError(error)
   } finally {
@@ -423,7 +349,6 @@ const closePanel = () => {
   executionDetail.value = null
   executionError.value = null
   isExecutionLoading.value = false
-  activeTab.value = 'data'
 }
 
 const formatCellValue = (value: unknown) => {
