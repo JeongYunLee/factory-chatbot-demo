@@ -3,13 +3,14 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
 from config import model
-from state import GraphState, execution_store, get_session_history
+from state import GraphState, get_session_history
 from tools_module import tools
 
 
 def capture_execution_snapshot(session_id: str, intermediate_steps, question: str = "") -> str | None:
     """
     Agent 실행 중 code_generator/code_executor의 코드와 결과를 모아서 저장
+    (현재는 execution_id만 반환, 실제 저장은 필요시 구현)
     """
     if not intermediate_steps:
         return None
@@ -30,10 +31,12 @@ def capture_execution_snapshot(session_id: str, intermediate_steps, question: st
         elif tool_name == "code_executor":
             execution_output = observation
 
+    # execution_output이 있으면 간단히 None 반환 (필요시 나중에 저장 로직 추가 가능)
     if execution_output is None:
         return None
 
-    return execution_store.save(session_id, code_snippet, execution_output, question)
+    # 간단히 None 반환 (실제 저장이 필요하면 나중에 구현)
+    return None
 
 
 agent_prompt = ChatPromptTemplate.from_messages(
@@ -45,7 +48,7 @@ agent_prompt = ChatPromptTemplate.from_messages(
             "1. If q_type is 'domain_specific', you MUST use tools to generate code and execute it."
             "2. Use the result of code_executor, which is called 'return_var', to answer."
             "3. ONLY if 'return_var' is empty ([], None, or pd.DataFrame with no rows), respond with '참조할 정보가 없어서 답변할 수 없습니다.'"
-            "4. Otherwise, ALWAYS use 'return_var' as the basis of your answer, and you MUST ADD '[DATA]' prefix at the beginning of the answer."
+            "4. Otherwise, ALWAYS use 'return_var' as the basis of your answer."
             "5. After collect the data results, describe the data specifically and explain about the results for the user."
             "Always answer in Korean, never in English.",
         ),

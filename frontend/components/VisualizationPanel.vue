@@ -33,10 +33,33 @@
         :title="chartTitle"
       />
 
-      <!-- 지도 시각화 (추후 구현) -->
-      <div v-else-if="visualizationMeta.chart_type === 'map'" class="map-placeholder">
-        <p>지도 시각화는 곧 추가될 예정입니다.</p>
-      </div>
+      <!-- 지도 시각화 -->
+      <MapChart
+        v-else-if="visualizationMeta.chart_type === 'map'"
+        :data="chartData"
+        :location-key="xAxis"
+        :value-key="yAxis"
+        :title="chartTitle"
+      />
+
+      <!-- 히트맵 -->
+      <HeatmapChart
+        v-else-if="visualizationMeta.chart_type === 'heatmap'"
+        :data="chartData"
+        :x-axis="xAxis"
+        :y-axis="yAxis"
+        :value-key="yAxis"
+        :title="chartTitle"
+      />
+
+      <!-- 산점도 -->
+      <ScatterPlotChart
+        v-else-if="visualizationMeta.chart_type === 'scatter_plot'"
+        :data="chartData"
+        :x-axis="xAxis"
+        :y-axis="yAxis"
+        :title="chartTitle"
+      />
 
       <!-- 기타 차트 타입 -->
       <div v-else class="unsupported-chart">
@@ -47,9 +70,13 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import BarChart from './charts/BarChart.vue'
 import LineChart from './charts/LineChart.vue'
 import PieChart from './charts/PieChart.vue'
+import MapChart from './charts/MapChart.vue'
+import HeatmapChart from './charts/HeatmapChart.vue'
+import ScatterPlotChart from './charts/ScatterPlotChart.vue'
 
 interface VisualizationMeta {
   chart_type: string
@@ -101,7 +128,6 @@ const barOrientation = computed(() => {
 }
 
 .no-visualization,
-.map-placeholder,
 .unsupported-chart {
   display: flex;
   align-items: center;

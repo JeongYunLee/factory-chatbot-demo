@@ -22,7 +22,7 @@ model = ChatOpenAI(
 
 
 # 데이터프레임 로드
-df = pd.read_csv("data/cleaned_전국공장등록현황_preprocessed_seoul.csv")
+df = pd.read_csv("data/cleaned_전국공장등록현황_preprocessed_seoul.csv", low_memory=False)
 
 
 __all__ = ["OPENAI_API_KEY", "model", "df"]

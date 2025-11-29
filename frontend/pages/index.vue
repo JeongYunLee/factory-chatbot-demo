@@ -223,12 +223,20 @@ watch(
 )
 
 const sendMessage = async (content: string) => {
+  // 검증만 trim()으로 체크하고, 실제 전송할 메시지는 원본 사용 (끝의 빈 스페이스 보존)
   if (!content.trim() || isLoading.value) return
+
+  // 디버깅: sendMessage에서 받은 메시지 확인
+  console.log('📨 sendMessage 수신:', {
+    길이: content.length,
+    끝5자: content.slice(-5),
+    전체: content
+  })
 
   messages.value.push({
     id: createId(),
     role: 'user',
-    text: content,
+    text: content.trim(), // 화면에는 trim된 버전 표시
     timestamp: Date.now(),
     hasData: false
   })
@@ -237,14 +245,30 @@ const sendMessage = async (content: string) => {
   errorMessage.value = null
 
   try {
+    const requestBody = {
+      message: content, // 원본 메시지 전송 (끝의 빈 스페이스 포함)
+      session_id: sessionId.value ?? undefined
+    }
+    
+    // 디버깅: 백엔드로 전송하는 메시지 확인
+    console.log('🚀 백엔드 전송:', {
+      메시지길이: requestBody.message.length,
+      메시지끝5자: requestBody.message.slice(-5),
+      JSON문자열길이: JSON.stringify(requestBody).length
+    })
+    
+    // 타임아웃 설정 (백엔드 타임아웃 180초보다 약간 길게 200초)
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 200000) // 200초
+    
     const responseRaw = await fetch(`${baseURL}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: content,
-        session_id: sessionId.value ?? undefined
-      })
+      body: JSON.stringify(requestBody),
+      signal: controller.signal
     })
+    
+    clearTimeout(timeoutId)
 
     if (!responseRaw.ok) {
       throw new Error(`HTTP ${responseRaw.status}`)
@@ -307,10 +331,19 @@ const sendMessage = async (content: string) => {
     })
   } catch (error: unknown) {
     errorMessage.value = parseError(error)
+    
+    // 타임아웃 에러인지 확인
+    let errorText = '죄송합니다. 서버와 통신 중 오류가 발생했습니다.'
+    if (error instanceof Error) {
+      if (error.name === 'AbortError' || error.message.includes('timeout') || error.message.includes('aborted')) {
+        errorText = '죄송합니다. 응답 생성 시간이 초과되었습니다. 다시 시도해 주세요.'
+      }
+    }
+    
     messages.value.push({
       id: createId(),
       role: 'bot',
-      text: '죄송합니다. 서버와 통신 중 오류가 발생했습니다.',
+      text: errorText,
       timestamp: Date.now()
     })
   } finally {
