@@ -392,7 +392,7 @@ router_prompt = PromptTemplate(
             Questions unrelated to data query, such as translating English to Korean, asking for general knowledge (e.g., "What is the capital of South Korea?"), or queries that can be answered through a web search.
 
             [domain_specific]
-            Questions related to 'factory' domain and data query, such as 'count the unique values of factories in Seoul', or count 'the number of rows in a table'.
+            Questions related to 'factory' or 'company' domain and data query, such as 'count the unique values of factories in Seoul', or count 'the number of rows in a table'.
 
             <Output format>: Always respond with either "general" or "domain_specific" and nothing else. {format_instructions}
             <chat_history>: {chat_history}
@@ -404,6 +404,10 @@ router_prompt = PromptTemplate(
 )
 
 def router(state: GraphState) -> GraphState:
+    # 디버깅: Router에서 받은 질문 확인
+    question = state["question"]
+    print(f"🔀 Router 입력 질문 길이: {len(question)}, 끝 5자: {repr(question[-5:]) if len(question) >= 5 else repr(question)}")
+    
     chain = router_prompt | model | router_output_parser
     
     router_with_history  = RunnableWithMessageHistory(
@@ -414,7 +418,7 @@ def router(state: GraphState) -> GraphState:
     )
     
     router_result = router_with_history.invoke(
-        {"query": state["question"]}, 
+        {"query": question}, 
         {'configurable': {'session_id': state["session_id"]}}
     )
     state["q_type"] = router_result['type']
@@ -506,6 +510,9 @@ def code_generator(input, session_id: str | None = None):
     """
     사용자의 질문에 답하기 위해 CSV에서 쿼리할 수 있는 Python Pandas 코드를 작성하는 도구
     """
+    # 디버깅: code_generator에 전달된 입력 확인
+    print(f"📝 code_generator 입력 길이: {len(input)}, 끝 5자: {repr(input[-5:]) if len(input) >= 5 else repr(input)}")
+    
     chain = code_generator_prompt | model | code_generator_output_parser
 
     resolved_session_id = session_id or generate_session_id()
@@ -518,13 +525,13 @@ def code_generator(input, session_id: str | None = None):
     )
 
     code_generator_result = code_generator_with_history.invoke(
-        {"query": input},
+        {"query": input},  # 원본 input 그대로 전달
         {'configurable': {'session_id': resolved_session_id}}
     )
     return code_generator_result['code']
 
 @tool
-def code_executor(input_code: str, max_retries=3):
+def code_executor(input_code: str, max_retries=5):
     """
     LLM이 생성한 Pandas 코드를 안전하게 실행하고 return_var 반환.
     df는 글로벌 변수 사용.
@@ -622,7 +629,9 @@ agent_prompt = ChatPromptTemplate.from_messages(
             "2. Use the result of code_executor, which is called 'return_var', to answer."
             "3. ONLY if 'return_var' is empty ([], None, or pd.DataFrame with no rows), respond with '참조할 정보가 없어서 답변할 수 없습니다.'"
             "4. Otherwise, ALWAYS use 'return_var' as the basis of your answer, and you MUST ADD '[DATA]' prefix at the beginning of the answer."
-            "5. After collect the data results, describe the data specifically and explain about the results for the user."
+            "5. When you use Koean text, be careful about the encoding and code(e.g. '(주)' & '㈜' --> '(주)' is correct.)"
+            "6. When you use number, be careful about the type (e.g. 114, '114') When you can't get the result, retry with other type."
+            "7. After collect the data results, describe the data specifically and explain about the results for the user."
             "Always answer in Korean, never in English."
         ),
         ("placeholder", "{chat_history}"),
@@ -639,9 +648,14 @@ def agent(state: GraphState) -> GraphState:
     - code 실행 실패 시 재시도 구조 적용
     """
     session_id = state["session_id"]
+    question = state["question"]
+    
+    # 디버깅: Agent에서 받은 질문 확인
+    print(f"🤖 Agent 입력 질문 길이: {len(question)}, 끝 5자: {repr(question[-5:]) if len(question) >= 5 else repr(question)}")
+    
     # 히스토리에 dict 그대로 넣지 말고 문자열로 변환
     chat_history = get_session_history(session_id)
-    chat_history.add_user_message(f"question: {state['question']}, q_type: {state['q_type']}")
+    chat_history.add_user_message(f"question: {question}, q_type: {state['q_type']}")
 
     try:
         # Agent 생성
@@ -666,14 +680,17 @@ def agent(state: GraphState) -> GraphState:
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
-                # Agent 실행
+                # Agent 실행 - 원본 질문 그대로 전달
+                input_data = {
+                    "input": question,  # state["question"] 대신 변수 사용
+                    "retrieved_data": state.get("context"),
+                    "relevance": state.get("relevance"),
+                    "session_id": session_id  # <-- session_id 명시적 전달
+                }
+                print(f"🚀 Agent invoke 입력 데이터의 input 길이: {len(input_data['input'])}, 끝 5자: {repr(input_data['input'][-5:]) if len(input_data['input']) >= 5 else repr(input_data['input'])}")
+                
                 result = agent_with_history.invoke(
-                    {
-                        "input": state["question"],
-                        "retrieved_data": state.get("context"),
-                        "relevance": state.get("relevance"),
-                        "session_id": session_id  # <-- session_id 명시적 전달
-                    },
+                    input_data,
                     {'configurable': {'session_id': session_id}}
                 )
 
@@ -787,12 +804,22 @@ async def stream_responses(request: Request):
         if not message:
             raise HTTPException(status_code=400, detail="Message is required")
         
+        # 검증만 strip()으로 체크하고, 실제 사용할 메시지는 원본 사용 (끝의 빈 스페이스 보존)
         if not message.strip():
             raise HTTPException(status_code=400, detail="Message cannot be empty")
 
         # 메시지 길이 제한
         if len(message) > 1000:
             raise HTTPException(status_code=400, detail="Message too long (max 1000 characters)")
+
+        # 디버깅: 메시지 원본 길이 및 끝 문자 확인
+        print(f"📝 수신 메시지 길이: {len(message)}, 끝 문자: {repr(message[-5:]) if len(message) >= 5 else repr(message)}")
+        print(f"📝 전체 메시지: {repr(message)}")
+        
+        # 메시지 끝에 빈 스페이스가 없으면 추가 (마지막 글자 보호)
+        if not message.endswith(' '):
+            message = message + ' '
+            print(f"🔒 메시지 끝에 보호 스페이스 추가: {repr(message[-5:])}")
 
         # 세션 ID 처리
         if not client_session_id:
@@ -808,8 +835,9 @@ async def stream_responses(request: Request):
             }
         )
 
+        # 원본 메시지 사용 (끝의 빈 스페이스 포함하여 마지막 글자 누락 방지)
         inputs = GraphState(
-            question=message,
+            question=message,  # 보호 스페이스가 추가된 메시지
             session_id=client_session_id,
             q_type='',
             context='',

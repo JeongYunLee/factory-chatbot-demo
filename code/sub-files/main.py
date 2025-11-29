@@ -4,8 +4,7 @@
 
 prompt-test.ipynb 등에서 사용할 때는 아래 모듈들을 직접 import 해서 사용하세요.
 - config          : LLM 모델 & 데이터프레임 로드
-- state           : GraphState, 세션/실행 결과 스토어
-- visualization   : 실행 결과 직렬화 및 차트 타입 추론
+- state           : GraphState, 세션 관리
 - routing         : Router 노드
 - tools_module    : code_generator / code_executor tool
 - agent_module    : agent 노드
