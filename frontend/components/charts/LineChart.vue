@@ -46,11 +46,13 @@ const chartOption = computed(() => {
     return {}
   }
 
-  const xAxisKey = props.xAxis || Object.keys(props.data[0])[0]
-  const yAxisKey = props.yAxis || Object.keys(props.data[0])[1]
+  const firstRow = props.data && props.data.length > 0 ? props.data[0] : undefined
+
+  const xAxisKey: string = props.xAxis || (firstRow ? Object.keys(firstRow)[0] || '' : '')
+  const yAxisKey: string = props.yAxis || (firstRow ? Object.keys(firstRow)[1] || '' : '')
 
   const xData = props.data.map((row) => {
-    const value = row[xAxisKey]
+    const value = row && xAxisKey in row ? row[xAxisKey] : undefined
     return value !== null && value !== undefined ? String(value) : ''
   })
 

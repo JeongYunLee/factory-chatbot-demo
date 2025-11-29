@@ -9,9 +9,9 @@
       <BarChart
         v-if="visualizationMeta.chart_type === 'bar_chart'"
         :data="chartData"
-        :x-axis="visualizationMeta.x_axis"
-        :y-axis="visualizationMeta.y_axis"
-        :orientation="visualizationMeta.orientation || 'vertical'"
+        :x-axis="xAxis"
+        :y-axis="yAxis"
+        :orientation="barOrientation"
         :title="chartTitle"
       />
 
@@ -19,8 +19,8 @@
       <LineChart
         v-else-if="visualizationMeta.chart_type === 'line_chart'"
         :data="chartData"
-        :x-axis="visualizationMeta.x_axis"
-        :y-axis="visualizationMeta.y_axis"
+        :x-axis="xAxis"
+        :y-axis="yAxis"
         :title="chartTitle"
       />
 
@@ -28,8 +28,8 @@
       <PieChart
         v-else-if="visualizationMeta.chart_type === 'pie_chart'"
         :data="chartData"
-        :name-key="visualizationMeta.x_axis"
-        :value-key="visualizationMeta.y_axis"
+        :name-key="xAxis"
+        :value-key="yAxis"
         :title="chartTitle"
       />
 
@@ -74,6 +74,24 @@ const props = withDefaults(defineProps<Props>(), {
 
 const chartData = computed(() => props.data || [])
 const chartTitle = computed(() => props.title || '')
+
+const xAxis = computed(() => {
+  const value = props.visualizationMeta?.x_axis
+  return value ?? undefined
+})
+
+const yAxis = computed(() => {
+  const value = props.visualizationMeta?.y_axis
+  return value ?? undefined
+})
+
+const barOrientation = computed(() => {
+  const value = props.visualizationMeta?.orientation
+  if (value === 'horizontal' || value === 'vertical') {
+    return value
+  }
+  return 'vertical'
+})
 </script>
 
 <style scoped>

@@ -30,10 +30,6 @@
           <span>데이터 기반 분석</span>
         </button>
         <div
-          class="bubble-text"
-          v-html="renderMarkdown(message.text)"
-        />
-        <div
           v-if="message.role === 'bot' && message.visualizationData && message.visualizationMeta && message.visualizationMeta.chart_type !== 'none'"
           class="message-visualization"
         >
@@ -42,6 +38,10 @@
             :visualization-meta="message.visualizationMeta"
           />
         </div>
+        <div
+          class="bubble-text"
+          v-html="renderMarkdown(message.text)"
+        />
       </div>
     </div>
 

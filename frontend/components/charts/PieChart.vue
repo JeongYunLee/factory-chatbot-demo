@@ -44,8 +44,9 @@ const chartOption = computed(() => {
     return {}
   }
 
-  const nameKey = props.nameKey || Object.keys(props.data[0])[0]
-  const valueKey = props.valueKey || Object.keys(props.data[0])[1]
+  const firstRow = props.data[0]
+  const nameKey: string = props.nameKey || (firstRow ? Object.keys(firstRow)[0] || '' : '')
+  const valueKey: string = props.valueKey || (firstRow ? Object.keys(firstRow)[1] || '' : '')
 
   const chartData = props.data.map((row) => {
     const name = row[nameKey] !== null && row[nameKey] !== undefined ? String(row[nameKey]) : ''
