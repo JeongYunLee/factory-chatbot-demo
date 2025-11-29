@@ -24,11 +24,13 @@
           class="data-button"
           @click="emit('show-data', message.executionId)"
         >
-          데이터 기반 답변
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span>데이터 기반 분석</span>
         </button>
         <div
           class="bubble-text"
-          :class="{ 'has-data-button': message.role === 'bot' && message.hasData }"
           v-html="renderMarkdown(message.text)"
         />
       </div>
@@ -106,30 +108,37 @@ const renderMarkdown = (text: string) => md.render(text ?? '')
 }
 
 .data-button {
-  position: absolute;
-  top: -0.5rem;
-  left: 0.5rem;
-  padding: 0.4rem 0.8rem;
-  background: #2563eb;
-  color: #fff;
-  border: none;
-  border-radius: 12px;
-  font-size: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  border-radius: 8px;
+  font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   transition: all 0.2s ease;
-  z-index: 1;
 }
 
 .data-button:hover {
-  background: #1d4ed8;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #16a34a;
 }
 
 .data-button:active {
-  transform: translateY(0);
+  background: rgba(34, 197, 94, 0.2);
+}
+
+.data-button svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  flex-shrink: 0;
 }
 
 .bubble-row.user .bubble {
@@ -142,9 +151,6 @@ const renderMarkdown = (text: string) => md.render(text ?? '')
   line-height: 1.6;
 }
 
-.bubble-text.has-data-button {
-  padding-top: 0.5rem;
-}
 
 .bubble-text :deep(p:last-child) {
   margin-bottom: 0;
@@ -241,4 +247,3 @@ const renderMarkdown = (text: string) => md.render(text ?? '')
   }
 }
 </style>
-

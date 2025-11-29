@@ -406,11 +406,11 @@ const copyToClipboard = async (text: string, type: 'code' | 'result' = 'code') =
 }
 
 useHead({
-  title: 'Factory Chatbot',
+  title: 'Data Chatbot',
   meta: [
     {
       name: 'description',
-      content: '서울 공장 등록 현황 데이터를 활용하는 챗봇 인터페이스'
+      content: '데이터를 활용하는 챗봇 서비스'
     }
   ]
 })
