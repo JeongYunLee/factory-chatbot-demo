@@ -10,8 +10,8 @@ class GraphState(TypedDict):
     q_type: str  # 질문의 유형
     answer: Union[str, list[str]]  # llm이 생성한 답변
     session_id: str  # 세션 ID
-    context: Optional[str]  # 검색 컨텍스트
-    relevance: Optional[str]  # 검색 적합도
+    # context: Optional[str]  # 검색 컨텍스트
+    # relevance: Optional[str]  # 검색 적합도
     execution_id: Optional[str]  # 실행 결과 식별자
 
 
