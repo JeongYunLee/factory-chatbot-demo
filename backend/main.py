@@ -220,7 +220,6 @@ visualization_prompt = PromptTemplate(
     - 'bar_chart': For comparing categories (e.g., "구별 공장 수", "업종별 직원 수")
     - 'line_chart': For showing trends over time (e.g., "연도별 등록 건수 추이", "최근 5년간 변화")
     - 'pie_chart': For showing proportions/percentages (e.g., "업종별 비율", "규모별 분포")
-    - 'map': For location-based data (e.g., "구별 공장 분포", "지역별 분석")
     - 'heatmap': For 2D cross-tabulation (e.g., "구별 업종별 공장 수")
     - 'scatter_plot': For correlation between two numeric variables (e.g., "면적 대비 직원 수")
     - 'none': When visualization is not suitable or data is too complex
@@ -230,12 +229,11 @@ visualization_prompt = PromptTemplate(
     Data sample (first 3 rows): {sample_data}
 
     Consider:
-    1. If the question mentions location (구, 시군구, 지역, 지도), recommend 'map' if location columns exist
-    2. If the question mentions time/trend (추이, 변화, 연도, 년도), recommend 'line_chart'
-    3. If the question asks for comparison (비교, 상위, 많다), recommend 'bar_chart'
-    4. If the question asks for proportion/ratio (비율, 분포), recommend 'pie_chart'
-    5. If data has 2 categorical dimensions, consider 'heatmap'
-    6. If data has 2 numeric variables for correlation, consider 'scatter_plot'
+    1. If the question mentions time/trend (추이, 변화, 연도, 년도), recommend 'line_chart'
+    2. If the question asks for comparison (비교, 상위, 많다, top), recommend 'bar_chart'
+    3. If the question asks for proportion/ratio (비율, 분포), recommend 'pie_chart'
+    4. If data has 2 categorical dimensions, consider 'heatmap'
+    5. If data has 2 numeric variables for correlation (관계), consider 'scatter_plot'
 
     {format_instructions}
     """,
@@ -495,15 +493,14 @@ code_generator_prompt = PromptTemplate(
             24. '정제_관리기관' (Standardized Management Agency): Standardized name of the management agency 
             25. '정제_보유구분' (Standardized Ownership Type): Standardized ownership classification
             26. '정제_시군구명' (Standardized District Name): Standardized city/county/district name
-            27. '정제_시도명' (Standardized Province Name): Standardized province/metropolitan city name
+            27. '정제_시도명' (Standardized Province Name): Standardized province/metropolitan city name (e.g. "서울특별시")
             28. '정제_업종명' (Standardized Industry Name): Standardized industry name. It's not unique, so you need to calculate with '정제_대표업종' and show in '정제_업종명'
             29. '정제_대표업종' (Standardized Primary Industry): Standardized primary industry classification. It's in code, so after use it, you need to show the name using '정제_업종명' column. For example, if '정제_대표업종' is 'a11', you need to show the name using '제조업' column.
             29. '정제_용도지역' (Standardized Zoning District): Standardized zoning/land use district
             30. '정제_지목' (Standardized Land Category): Standardized land category classification
 
             # Date Fields
-            31. '정제_최초등록일' (Standardized Initial Registration Date): Standardized date of initial registration (format: YYYY-MM-DD)
-            32. '정제_최초승인일' (Standardized Initial Approval Date): Standardized date of initial approval (format: YYYY-MM-DD)
+            31. '정제_최초등록일' (Standardized Initial Registration Date): Standardized date of initial registration (format: YYYY-MM-DD). Use this columns when "연도" or "년도" is in the question.            32. '정제_최초승인일' (Standardized Initial Approval Date): Standardized date of initial approval (format: YYYY-MM-DD)
 
             Write the code with the most efficient way.
             <Output format>: Always respond with Python Pandas code. Always assign the final result to a variable called `return_var`. Do not use print(). {format_instructions}
@@ -543,7 +540,7 @@ def code_generator(input, session_id: str | None = None):
     return code_generator_result['code']
 
 @tool
-def code_executor(input_code: str, max_retries=5):
+def code_executor(input_code: str, max_retries=3):
     """
     LLM이 생성한 Pandas 코드를 안전하게 실행하고 return_var 반환.
     df는 글로벌 변수 사용.
@@ -641,9 +638,11 @@ agent_prompt = ChatPromptTemplate.from_messages(
             "2. Use the result of code_executor, which is called 'return_var', to answer."
             "3. ONLY if 'return_var' is empty ([], None, or pd.DataFrame with no rows), respond with '참조할 정보가 없어서 답변할 수 없습니다.'"
             "4. Otherwise, ALWAYS use 'return_var' as the basis of your answer, and you MUST ADD '[DATA]' prefix at the beginning of the answer."
-            "5. When you use Koean text, be careful about the encoding and code(e.g. '(주)' & '㈜' --> '(주)' is correct.)"
-            "6. When you use number, be careful about the type (e.g. 114, '114') When you can't get the result, retry with other type."
-            "7. After collect the data results, describe the data specifically and explain about the results for the user."
+            "5. When you use Korean text, be careful about the encoding and code(e.g. '(주)' & '㈜' --> '(주)' is correct.)"
+            "6. When you use numbers, be careful about the type (e.g. 114, '114'). When you can't get the result, retry with another type."
+            "7. After collecting the data results, describe the data specifically and explain the results for the user."
+            "8. If the executed code fails with an error, you MUST modify the code and try again. NEVER submit the same code again. "
+            "   Analyze the error and generate an improved version of the code (e.g., fix dtype errors, NA comparisons, boolean mask issues, missing columns, etc.)."
             "Always answer in Korean, never in English."
         ),
         ("placeholder", "{chat_history}"),
@@ -696,7 +695,7 @@ def agent(state: GraphState) -> GraphState:
                     "input": question,  # state["question"] 대신 변수 사용
                     "retrieved_data": state.get("context"),
                     "relevance": state.get("relevance"),
-                    "session_id": session_id  # <-- session_id 명시적 전달
+                    "session_id": session_id  
                 }
 
                 # 콜백 비활성화하여 RootListenersTracer 에러 방지

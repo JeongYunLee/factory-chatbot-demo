@@ -11,8 +11,37 @@ from config import model
 from state import generate_session_id, get_session_history
 
 
+class Router(BaseModel):
+    type: str = Field(
+        description="type of the query that model choose. Choose from ['general', 'domain_specific']"
+    )
+
+
 class CodeGenerator(BaseModel):
     code: str = Field(description="Python Pandas Code")
+
+
+router_output_parser = JsonOutputParser(pydantic_object=Router)
+router_format_instructions = router_output_parser.get_format_instructions()
+
+router_prompt = PromptTemplate(
+    template="""
+            You are an expert who classifies the type of question. There are two query types: ['general', 'domain_specific']
+
+            [general]
+            Questions unrelated to data query, such as translating English to Korean, asking for general knowledge (e.g., "What is the capital of South Korea?"), or queries that can be answered through a web search.
+
+            [domain_specific]
+            Questions related to 'factory' or 'company' domain and data query, such as 'count the unique values of factories in Seoul', or count 'the number of rows in a table'.
+
+            <Output format>: Always respond with either "general" or "domain_specific" and nothing else. {format_instructions}
+            <chat_history>: {chat_history}
+            
+            <Question>: {query} 
+            """,
+    input_variables=["query", "chat_history"],
+    partial_variables={"format_instructions": router_format_instructions},
+)
 
 
 code_generator_output_parser = JsonOutputParser(pydantic_object=CodeGenerator)
@@ -20,7 +49,7 @@ code_generator_format_instructions = code_generator_output_parser.get_format_ins
 
 code_generator_prompt = PromptTemplate(
     template="""
-            You are an expert who can generate Python Pandas Code to answer the query.
+           You are an expert who can generate Python Pandas Code to answer the query.
 
             Write the code with the following dataset metadata. Do not use any other columns except the ones provided in the metadata. The columns are written in Korean.
 
@@ -65,15 +94,14 @@ code_generator_prompt = PromptTemplate(
             24. '정제_관리기관' (Standardized Management Agency): Standardized name of the management agency 
             25. '정제_보유구분' (Standardized Ownership Type): Standardized ownership classification
             26. '정제_시군구명' (Standardized District Name): Standardized city/county/district name
-            27. '정제_시도명' (Standardized Province Name): Standardized province/metropolitan city name
+            27. '정제_시도명' (Standardized Province Name): Standardized province/metropolitan city name (e.g. "서울특별시")
             28. '정제_업종명' (Standardized Industry Name): Standardized industry name. It's not unique, so you need to calculate with '정제_대표업종' and show in '정제_업종명'
             29. '정제_대표업종' (Standardized Primary Industry): Standardized primary industry classification. It's in code, so after use it, you need to show the name using '정제_업종명' column. For example, if '정제_대표업종' is 'a11', you need to show the name using '제조업' column.
             29. '정제_용도지역' (Standardized Zoning District): Standardized zoning/land use district
             30. '정제_지목' (Standardized Land Category): Standardized land category classification
 
             # Date Fields
-            31. '정제_최초등록일' (Standardized Initial Registration Date): Standardized date of initial registration (format: YYYY-MM-DD)
-            32. '정제_최초승인일' (Standardized Initial Approval Date): Standardized date of initial approval (format: YYYY-MM-DD)
+            31. '정제_최초등록일' (Standardized Initial Registration Date): Standardized date of initial registration (format: YYYY-MM-DD). Use this columns when "연도" or "년도" is in the question.            32. '정제_최초승인일' (Standardized Initial Approval Date): Standardized date of initial approval (format: YYYY-MM-DD)
 
             Write the code with the most efficient way.
             <Output format>: Always respond with Python Pandas code. Always assign the final result to a variable called `return_var`. Do not use print(). {format_instructions}
@@ -86,14 +114,50 @@ code_generator_prompt = PromptTemplate(
 )
 
 
-@tool
-def code_generator(input, session_id: str | None = None):
+def _query_router_impl(query: str, session_id: str):
     """
-    사용자의 질문에 답하기 위해 CSV에서 쿼리할 수 있는 Python Pandas 코드를 작성하는 도구
+    질문을 일반(general) 또는 도메인 특화(domain_specific)로 분류하는 내부 구현.
+    """
+    chain = router_prompt | model | router_output_parser
+
+    router_with_history = RunnableWithMessageHistory(
+        chain,
+        get_session_history,
+        input_messages_key="query",
+        history_messages_key="chat_history",
+    )
+
+    # 콜백 비활성화하여 RootListenersTracer 에러 방지
+    config = RunnableConfig(
+        configurable={"session_id": session_id},
+        callbacks=[]  # 콜백 비활성화
+    )
+    router_result = router_with_history.invoke(
+        {"query": query},
+        config,
+    )
+    return router_result["type"]
+
+
+@tool
+def query_router(query: str):
+    """
+    질문을 일반(general) 또는 도메인 특화(domain_specific)로 분류하는 도구.
+    'general': 데이터 쿼리와 무관한 일반적인 질문 (번역, 일반 상식 등)
+    'domain_specific': 공장이나 회사 도메인과 관련된 데이터 쿼리 질문
+    """
+    # Agent가 호출할 때는 session_id가 없으므로 자동 생성
+    # 실제로는 Agent 실행 컨텍스트에서 session_id를 가져와야 하지만,
+    # LangChain 도구는 이를 직접 지원하지 않으므로 자동 생성 사용
+    session_id = generate_session_id()
+    return _query_router_impl(query, session_id)
+
+
+def _code_generator_impl(input, session_id: str):
+    """
+    코드 생성 내부 구현.
     """
     chain = code_generator_prompt | model | code_generator_output_parser
-
-    resolved_session_id = session_id or generate_session_id()
 
     code_generator_with_history = RunnableWithMessageHistory(
         chain,
@@ -104,7 +168,7 @@ def code_generator(input, session_id: str | None = None):
 
     # 콜백 비활성화하여 RootListenersTracer 에러 방지
     config = RunnableConfig(
-        configurable={"session_id": resolved_session_id},
+        configurable={"session_id": session_id},
         callbacks=[]  # 콜백 비활성화
     )
     code_generator_result = code_generator_with_history.invoke(
@@ -115,7 +179,17 @@ def code_generator(input, session_id: str | None = None):
 
 
 @tool
-def code_executor(input_code: str, max_retries: int = 3):
+def code_generator(input: str):
+    """
+    사용자의 질문에 답하기 위해 CSV에서 쿼리할 수 있는 Python Pandas 코드를 작성하는 도구
+    """
+    # Agent가 호출할 때는 session_id가 없으므로 자동 생성
+    session_id = generate_session_id()
+    return _code_generator_impl(input, session_id)
+
+
+@tool
+def code_executor(input_code: str, max_retries: int = 2):
     """
     LLM이 생성한 Pandas 코드를 안전하게 실행하고 return_var 반환.
     df는 글로벌 변수 사용.
@@ -131,18 +205,23 @@ def code_executor(input_code: str, max_retries: int = 3):
                 raise ValueError("Generated code did not assign value to 'return_var'.")
             return local_vars["return_var"]
         except Exception as e:  # pylint: disable=broad-except
-            print(f"⚠️ 코드 실행 실패 (시도 {attempt+1}/{max_retries}): {e}")
+            # print(f"⚠️ 코드 실행 실패 (시도 {attempt+1}/{max_retries}): {e}")
             # NA나 boolean 비교 에러 등 재시도 가능
             if attempt == max_retries - 1:
                 raise
 
 
-tools = [code_generator, code_executor]
+tools = [query_router, code_generator, code_executor]
 
 
 __all__ = [
+    "Router",
+    "router_prompt",
+    "_query_router_impl",
+    "query_router",
     "CodeGenerator",
     "code_generator_prompt",
+    "_code_generator_impl",
     "code_generator",
     "code_executor",
     "tools",
