@@ -85,7 +85,6 @@ def create_agent_prompt():
             ),
             ("placeholder", "{chat_history}"),
             ("human", "{input}"),
-            ("human", "{retrieved_data}"),
             ("placeholder", "{agent_scratchpad}"),
         ]
     )
@@ -130,8 +129,6 @@ def create_agent(model: ChatOpenAI, tools, execution_store: ExecutionResultStore
                     # Agent 실행 - 원본 질문 그대로 전달
                     input_data = {
                         "input": question,  # state["question"] 대신 변수 사용
-                        "retrieved_data": state.get("context"),
-                        "relevance": state.get("relevance"),
                         "session_id": session_id  
                     }
 

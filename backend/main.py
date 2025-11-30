@@ -6,7 +6,12 @@ import os
 import pandas as pd
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-import uvicorn
+
+# uvicorn은 FastAPI 실행 시에만 필요하므로 선택적으로 import
+try:
+    import uvicorn
+except ImportError:
+    uvicorn = None  # test.ipynb에서 사용할 때는 없어도 됨
 
 # 환경변수 로드
 load_dotenv(override=True)
@@ -22,9 +27,10 @@ model = ChatOpenAI(
 )
 
 # 데이터 로드
-df = pd.read_csv('data/cleaned_전국공장등록현황_preprocessed_seoul.csv')
+df = pd.read_csv('data/전국공장등록현황_서울_통합.csv')
 
 # 모듈 import
+from core.models import GraphState  # test.ipynb에서 사용하기 위해 export
 from core.router import create_router
 from core.code_executor import create_code_tools
 from core.agent import create_agent
@@ -51,6 +57,8 @@ graph = create_workflow(router, agent)
 app = create_app(graph, execution_store)
 
 if __name__ == "__main__":
+    if uvicorn is None:
+        raise ImportError("uvicorn is required to run the FastAPI server. Install it with: pip install uvicorn")
     uvicorn.run(
         "main:app", 
         host="0.0.0.0", 

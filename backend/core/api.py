@@ -119,9 +119,9 @@ def create_app(graph, execution_store):
                 question=message,  # 보호 스페이스가 추가된 메시지
                 session_id=client_session_id,
                 q_type='',
-                context='',
+                # context='',
                 answer='',
-                relevance='',
+                # relevance='',
                 execution_id=None,
             )
 

@@ -70,6 +70,10 @@ def create_code_tools(model: ChatOpenAI, df):
                 29. '정제_용도지역' (Standardized Zoning District): Standardized zoning/land use district
                 30. '정제_지목' (Standardized Land Category): Standardized land category classification
 
+                # Additional Information
+                31. '면적' (Area): Area in each '시군구명'. Unit is km².
+                32. '인구' (Population): Population in each '시군구명'. Unit is person.
+
                 # Date Fields
                 31. '정제_최초등록일' (Standardized Initial Registration Date): Standardized date of initial registration (format: YYYY-MM-DD). Use this columns when "연도" or "년도" is in the question.            32. '정제_최초승인일' (Standardized Initial Approval Date): Standardized date of initial approval (format: YYYY-MM-DD)
 

@@ -144,8 +144,8 @@ agent_prompt = ChatPromptTemplate.from_messages(
 def run_agent(
     question: str,
     session_id: str | None = None,
-    context: str | None = None,
-    relevance: str | None = None,
+    # context: str | None = None,
+    # relevance: str | None = None,
 ) -> dict:
     """
     Agent 실행 함수
@@ -235,10 +235,10 @@ def run_agent(
                 
                 # 입력 구성 (context가 있으면 포함)
                 input_data = {"input": question}
-                if context:
-                    input_data["context"] = context
-                if relevance:
-                    input_data["relevance"] = relevance
+                # if context:
+                #     input_data["context"] = context
+                # if relevance:
+                #     input_data["relevance"] = relevance
                 
                 result = agent_with_history.invoke(
                     input_data,
