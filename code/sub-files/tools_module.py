@@ -127,7 +127,6 @@ def _query_router_impl(query: str, session_id: str):
         history_messages_key="chat_history",
     )
 
-    # 콜백 비활성화하여 RootListenersTracer 에러 방지
     config = RunnableConfig(
         configurable={"session_id": session_id},
         callbacks=[]  # 콜백 비활성화
@@ -166,7 +165,6 @@ def _code_generator_impl(input, session_id: str):
         history_messages_key="chat_history",
     )
 
-    # 콜백 비활성화하여 RootListenersTracer 에러 방지
     config = RunnableConfig(
         configurable={"session_id": session_id},
         callbacks=[]  # 콜백 비활성화

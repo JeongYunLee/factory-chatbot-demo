@@ -11,7 +11,7 @@ class ThreadSafeStore:
 
     def __init__(self):
         self._store: dict[str, ChatMessageHistory] = {}
-        self._lock = threading.RLock()  # 재진입 가능한 락
+        self._lock = threading.RLock()  
 
     def get_session_history(self, session_id: str) -> ChatMessageHistory:
         with self._lock:

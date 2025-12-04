@@ -144,8 +144,6 @@ agent_prompt = ChatPromptTemplate.from_messages(
 def run_agent(
     question: str,
     session_id: str | None = None,
-    # context: str | None = None,
-    # relevance: str | None = None,
 ) -> dict:
     """
     Agent 실행 함수
@@ -227,18 +225,13 @@ def run_agent(
         for attempt in range(max_attempts):
             try:
                 # Agent 실행
-                # 콜백 비활성화하여 RootListenersTracer 에러 방지
                 config = RunnableConfig(
                     configurable={"session_id": resolved_session_id},
                     callbacks=[]  # 콜백 비활성화
                 )
                 
-                # 입력 구성 (context가 있으면 포함)
+                # 입력 구성 
                 input_data = {"input": question}
-                # if context:
-                #     input_data["context"] = context
-                # if relevance:
-                #     input_data["relevance"] = relevance
                 
                 result = agent_with_history.invoke(
                     input_data,
